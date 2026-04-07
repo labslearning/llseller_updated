@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OMNI-HYDRA | Command & Control</title>
+    
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0,1" rel="stylesheet" />
+</head>
+
+<body class="bg-[#010103] text-slate-200 antialiased selection:bg-purple-500/40 custom-scrollbar overflow-hidden">
+
+{% csrf_token %}
+
+<div 
+    x-data="omniCommandCenter('{{ institution.id }}')" 
+    x-init="init()"
+    @htmx:after-swap="syncPayloadDirect($event)"
+    class="flex flex-col w-full h-screen bg-[#010103] border-x border-purple-500/20 shadow-[0_0_100px_rgba(168,85,247,0.15)] overflow-hidden font-sans relative select-none antialiased"
+>
+    <div class="absolute inset-0 cyber-grid opacity-20 pointer-events-none z-0"></div>
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[180%] h-96 bg-gradient-to-b from-purple-600/15 via-blue-900/5 to-transparent blur-[140px] pointer-events-none z-0"></div>
+    <div class="absolute bottom-0 left-0 w-full h-1/4 bg-gradient-to-t from-black to-transparent pointer-events-none z-10"></div>
+    
+    <div class="absolute top-8 right-8 z-[100] flex flex-col gap-4 pointer-events-none w-96" id="tactical-toast-container">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div x-show="toast.visible" 
+                 x-transition:enter="transition cubic-bezier(0.34, 1.56, 0.64, 1) duration-500"
+                 x-transition:enter-start="opacity-0 translate-x-20 scale-90 blur-sm"
+                 x-transition:enter-end="opacity-100 translate-x-0 scale-100 blur-0"
+                 x-transition:leave="transition ease-in duration-300"
+                 x-transition:leave-start="opacity-100 scale-100"
+                 x-transition:leave-end="opacity-0 scale-95 translate-x-10"
+                 :class="{
+                    'bg-emerald-950/85 border-emerald-500/60 text-emerald-50 shadow-[0_0_40px_rgba(16,185,129,0.2)]': toast.type === 'success', 
+                    'bg-red-950/85 border-red-500/60 text-red-50 shadow-[0_0_40px_rgba(220,38,38,0.2)]': toast.type === 'error', 
+                    'bg-[#0a0a1a]/95 border-purple-500/60 text-purple-50 shadow-[0_0_40px_rgba(168,85,247,0.2)]': toast.type === 'info'
+                 }"
+                 class="p-5 rounded-2xl border backdrop-blur-3xl flex items-start gap-4 pointer-events-auto border-l-[6px]">
+                <span class="material-symbols-outlined text-[24px] shrink-0" 
+                      :class="{'text-emerald-400': toast.type === 'success', 'text-red-400': toast.type === 'error', 'text-purple-400': toast.type === 'info'}" 
+                      x-text="toast.icon"></span>
+                <div class="flex flex-col gap-1">
+                    <span class="font-black uppercase tracking-[0.2em] text-[10px] opacity-70" x-text="toast.type"></span>
+                    <span class="leading-relaxed font-semibold text-sm" x-text="toast.message"></span>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <header class="shrink-0 bg-[#030308]/90 backdrop-blur-3xl border-b border-white/10 p-8 flex justify-between items-center z-40 shadow-2xl relative">
+        <div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-60"></div>
+        
+        <div class="flex items-center gap-8">
+            <div class="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-black border border-white/10 shadow-[inset_0_0_20px_rgba(168,85,247,0.3)] overflow-hidden group cursor-pointer">
+                <div class="absolute inset-0 bg-gradient-to-br from-purple-900/40 via-transparent to-blue-900/40 group-hover:scale-110 transition-transform duration-700"></div>
+                <span class="material-symbols-outlined text-purple-400 text-5xl relative z-10 drop-shadow-[0_0_15px_rgba(168,85,247,0.8)]" 
+                      :class="{'animate-[spin_6s_linear_infinite]': connectionStatus === 'CONNECTED'}">radar</span>
+                
+                <span class="absolute top-2.5 right-2.5 flex h-3.5 w-3.5 z-20">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" 
+                          :class="{'bg-emerald-400': connectionStatus === 'CONNECTED', 'bg-amber-400': connectionStatus === 'CONNECTING', 'bg-red-400': connectionStatus === 'DISCONNECTED'}"></span>
+                    <span class="relative inline-flex rounded-full h-3.5 w-3.5 shadow-lg border border-black/50"
+                          :class="{'bg-emerald-500 shadow-emerald-500/50': connectionStatus === 'CONNECTED', 'bg-amber-500': connectionStatus === 'CONNECTING', 'bg-red-500 shadow-red-500/50': connectionStatus === 'DISCONNECTED'}"></span>
+                </span>
+            </div>
+            
+            <div class="flex flex-col">
+                <div class="flex items-center gap-4">
+                    <h1 class="text-white text-3xl font-black tracking-[0.3em] uppercase text-shadow-glow">OMNI-HYDRA</h1>
+                    <div class="h-6 w-[1px] bg-white/10"></div>
+                    <span class="bg-purple-600/20 text-purple-400 text-[9px] font-black px-3 py-1 rounded-full border border-purple-500/40 tracking-[0.3em] uppercase">Security Level: Omega</span>
+                </div>
+                <div class="text-xs font-mono flex items-center gap-3 mt-2 tracking-widest uppercase">
+                    <span class="px-2.5 py-1 rounded-md bg-black/60 border border-white/5 font-black"
+                          :class="{'text-emerald-400': connectionStatus === 'CONNECTED', 'text-amber-400': connectionStatus === 'CONNECTING', 'text-red-400': connectionStatus === 'DISCONNECTED'}"
+                          x-text="`STATUS: ${statusMessage}`">
+                    </span>
+                    <span class="text-slate-700 font-black">>></span>
+                    <span class="text-purple-300 font-bold drop-shadow-md underline decoration-purple-500/30 underline-offset-4">{{ institution.name }}</span>
+                    <span class="text-slate-600">@</span>
+                    <span class="text-slate-400 font-black tracking-widest">{{ institution.city|upper }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex gap-3 bg-[#05050c] p-2 rounded-2xl border border-white/5 shadow-inner">
+            <button 
+                hx-post="/admin/sales/globalpipeline/omni-radar/ai-compose/{{ institution.id }}/?channel=EMAIL" 
+                hx-target="#draft-container" 
+                hx-indicator="#ai-spinner-email"
+                @click="prepareDrafting('EMAIL')"
+                class="group relative overflow-hidden bg-[#0a0f1c] hover:bg-blue-900/30 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border border-blue-500/20 flex items-center gap-3 active:scale-95"
+            >
+                <span id="ai-spinner-email" class="htmx-indicator"><svg class="animate-spin h-4 w-4 text-blue-400" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></span>
+                <span class="material-symbols-outlined text-[18px] text-blue-400 htmx-request-hide">mail</span>
+                <span class="htmx-request-hide">Draft Email</span>
+            </button>
+
+            <button 
+                hx-post="/admin/sales/globalpipeline/omni-radar/ai-compose/{{ institution.id }}/?channel=WHATSAPP" 
+                hx-target="#draft-container" 
+                hx-indicator="#ai-spinner-waba"
+                @click="prepareDrafting('WHATSAPP')"
+                class="group relative overflow-hidden bg-[#0a0f1c] hover:bg-emerald-900/30 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border border-emerald-500/20 flex items-center gap-3 active:scale-95"
+            >
+                <span id="ai-spinner-waba" class="htmx-indicator"><svg class="animate-spin h-4 w-4 text-emerald-400" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></span>
+                <span class="material-symbols-outlined text-[18px] text-emerald-400 htmx-request-hide">forum</span>
+                <span class="htmx-request-hide">Draft WABA</span>
+            </button>
+
+            <button 
+                hx-post="/admin/sales/globalpipeline/omni-radar/ai-compose/{{ institution.id }}/?channel=SMS" 
+                hx-target="#draft-container" 
+                hx-indicator="#ai-spinner-sms"
+                @click="prepareDrafting('SMS')"
+                class="group relative overflow-hidden bg-[#0a0f1c] hover:bg-orange-900/30 text-white px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border border-orange-500/20 flex items-center gap-3 active:scale-95"
+            >
+                <span id="ai-spinner-sms" class="htmx-indicator"><svg class="animate-spin h-4 w-4 text-orange-400" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></span>
+                <span class="material-symbols-outlined text-[18px] text-orange-400 htmx-request-hide">cell_tower</span>
+                <span class="htmx-request-hide">Draft SMS</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="grow overflow-y-auto p-12 space-y-12 custom-scrollbar relative z-10 gpu-accelerated scroll-smooth" id="timeline-feed">
+        <div class="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-[2px] bg-gradient-to-b from-transparent via-purple-500/20 to-transparent z-0">
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[6px] h-60 bg-gradient-to-b from-transparent via-purple-400 to-transparent opacity-40 animate-laser-scan blur-[2px]"></div>
+        </div>
+
+        {% for interaction in interactions %}
+            <div class="relative z-10 flex w-full {% if interaction.status == 'REPLIED' or interaction.status == 'OPENED' or interaction.direction == 'IN' %} justify-start {% else %} justify-end {% endif %} timeline-item">
+                <div class="absolute top-7 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full border-[5px] border-[#010103] z-20 transition-all duration-1000
+                    {% if interaction.status == 'REPLIED' %} bg-emerald-400 shadow-[0_0_30px_rgba(16,185,129,1)]
+                    {% elif interaction.status == 'OPENED' %} bg-purple-400 shadow-[0_0_30px_rgba(168,85,247,1)]
+                    {% else %} bg-slate-700 shadow-inner {% endif %}">
+                </div>
+
+                <div class="w-[47%] flex flex-col transition-all duration-700 hover:-translate-y-3 hover:scale-[1.04] {% if interaction.status == 'REPLIED' or interaction.status == 'OPENED' or interaction.direction == 'IN' %} items-end text-right pr-12 {% else %} items-start pl-12 {% endif %}">
+                    <div class="max-w-full rounded-[2.5rem] p-8 shadow-[0_30px_60px_rgba(0,0,0,0.6)] border backdrop-blur-3xl relative overflow-hidden group
+                        {% if interaction.status == 'REPLIED' or interaction.direction == 'IN' %} bg-gradient-to-br from-[#022c22]/95 to-[#064e3b]/90 border-emerald-500/40 text-emerald-50
+                        {% elif interaction.status == 'OPENED' %} bg-gradient-to-br from-[#2e1065]/95 to-[#4c1d95]/80 border-purple-500/40 text-purple-50
+                        {% else %} bg-gradient-to-br from-[#0a0f1c]/98 to-[#1a2333]/95 border-slate-700/50 text-slate-200 {% endif %}"
+                    >
+                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        
+                        <div class="flex justify-between items-start mb-5 gap-10 border-b border-white/10 pb-5">
+                            <div class="flex flex-col gap-2 {% if interaction.status == 'REPLIED' or interaction.direction == 'IN' %} items-end {% else %} items-start {% endif %}">
+                                <span class="font-black text-xs tracking-[0.35em] uppercase flex items-center gap-2 drop-shadow-lg
+                                    {% if interaction.channel == 'EMAIL' %} text-blue-400
+                                    {% elif interaction.channel == 'WHATSAPP' %} text-emerald-400
+                                    {% else %} text-orange-400 {% endif %}">
+                                    {% if interaction.channel == 'EMAIL' %} <span class="material-symbols-outlined text-[18px]">mail</span> SMTP-QUANTUM-STRIKE
+                                    {% elif interaction.channel == 'WHATSAPP' %} <span class="material-symbols-outlined text-[18px]">forum</span> HYDRA-WABA-GATEWAY
+                                    {% else %} <span class="material-symbols-outlined text-[18px]">sms</span> SMS-CELL-STORM {% endif %}
+                                </span>
+                                {% if interaction.subject %}
+                                    <span class="text-[12px] font-black opacity-100 tracking-wider text-white drop-shadow-md">{{ interaction.subject|upper }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="flex flex-col items-end gap-1 shrink-0">
+                                <span class="text-[11px] font-mono font-black opacity-80 bg-black/60 px-3 py-1.5 rounded-xl border border-white/10 whitespace-nowrap shadow-xl">
+                                    {{ interaction.created_at|date:"D d M, H:i:s"|upper }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="text-[15px] leading-relaxed font-sans font-bold opacity-100 break-words selection:bg-purple-600/50">
+                            {{ interaction.message_sent|default:interaction.message_received|linebreaksbr }}
+                        </div>
+                        
+                        <div class="mt-6 pt-5 border-t border-white/10 flex flex-wrap gap-4 {% if interaction.status == 'REPLIED' or interaction.direction == 'IN' %} justify-end {% else %} justify-start {% endif %}">
+                            {% if interaction.opened_count > 0 %}
+                                <div class="text-[11px] font-mono bg-purple-950/80 text-purple-200 border border-purple-400/50 px-4 py-1.5 rounded-xl flex items-center gap-2 shadow-2xl">
+                                    <span class="material-symbols-outlined text-[16px] animate-pulse">visibility</span> EYES-ON: {{ interaction.opened_count }}
+                                </div>
+                            {% endif %}
+                            {% if interaction.ai_sentiment %}
+                                <div class="text-[11px] font-mono bg-emerald-900/80 text-emerald-200 border border-emerald-400/50 px-4 py-1.5 rounded-xl flex items-center gap-2 shadow-2xl">
+                                    <span class="material-symbols-outlined text-[16px]">psychology</span> INTENT: {{ interaction.ai_sentiment }}
+                                </div>
+                            {% endif %}
+                            <div class="text-[11px] font-black tracking-[0.3em] uppercase bg-[#010103] text-white border border-white/30 px-4 py-1.5 rounded-xl shadow-[inset_0_0_15px_rgba(255,255,255,0.1)]">
+                                SIGNAL: {{ interaction.status }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+
+        <template x-for="event in liveEvents" :key="event.id">
+            <div class="relative z-10 flex w-full justify-center timeline-item-enter mt-8">
+                <div class="bg-gradient-to-r from-[#0a0a25] via-[#1a1a45] to-[#0a0a25] text-white text-xs font-mono px-8 py-4 rounded-3xl shadow-[0_0_50px_rgba(168,85,247,0.6)] border border-purple-400/60 flex items-center gap-5 backdrop-blur-3xl ring-4 ring-purple-500/10">
+                    <span class="relative flex h-4 w-4">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-4 w-4 bg-white shadow-[0_0_10px_rgba(255,255,255,1)]"></span>
+                    </span>
+                    <span class="font-black tracking-[0.25em] text-purple-400 border-r border-white/20 pr-5" x-text="`[${event.time}]`"></span>
+                    <span class="font-black uppercase tracking-[0.4em] text-emerald-400" x-text="event.type"></span>
+                    <div class="h-4 w-[1px] bg-white/20 mx-2"></div>
+                    <span class="font-black opacity-100 tracking-wider text-slate-100 uppercase" x-text="event.message"></span>
+                </div>
+            </div>
+        </template>
+    </main>
+
+    <footer class="shrink-0 bg-[#020205] p-10 border-t border-purple-500/50 z-40 shadow-[0_-40px_80px_rgba(0,0,0,0.98)] relative">
+        
+        <div id="tactical-feedback" class="absolute -top-20 left-0 w-full px-12 flex justify-center z-[110] pointer-events-none empty:hidden"></div>
+
+        <div class="max-w-7xl mx-auto flex flex-col gap-8">
+            
+            <div class="flex flex-col gap-4">
+                <div class="flex items-center justify-between px-6">
+                    <div class="flex items-center gap-3">
+                        <span class="flex h-2 w-2 rounded-full animate-pulse" :class="payloadLength > 0 ? 'bg-emerald-500' : 'bg-red-500'"></span>
+                        <span class="text-[10px] font-black tracking-[0.4em] uppercase transition-colors" :class="payloadLength > 0 ? 'text-emerald-400' : 'text-red-400'">Active Ordnance Control</span>
+                    </div>
+                    <div class="flex gap-4 items-center">
+                         <span class="text-slate-500 text-[9px] font-mono uppercase tracking-widest flex items-center gap-2">
+                             Buffer Status: 
+                             <span class="font-bold px-2 py-0.5 rounded-md" :class="payloadLength > 0 ? 'bg-purple-900/50 text-purple-400 border border-purple-500/30' : 'text-red-500'" x-text="payloadLength > 0 ? 'ARMED (' + payloadLength + ' bits)' : 'EMPTY'"></span>
+                         </span>
+                         
+                         <span x-show="armedChannel !== null" class="text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border" 
+                               :class="{
+                                   'bg-blue-900/30 text-blue-400 border-blue-500/30': armedChannel === 'EMAIL',
+                                   'bg-emerald-900/30 text-emerald-400 border-emerald-500/30': armedChannel === 'WHATSAPP',
+                                   'bg-orange-900/30 text-orange-400 border-orange-500/30': armedChannel === 'SMS'
+                               }">
+                            TARGET: <span x-text="armedChannel"></span>
+                         </span>
+
+                         <button @click="clearPayload()" class="text-red-500/60 hover:text-red-400 text-[9px] font-black uppercase tracking-widest transition-colors flex items-center gap-1 border border-red-500/20 px-3 py-1 rounded-full bg-red-500/5 hover:bg-red-500/20">
+                            <span class="material-symbols-outlined text-[14px]">delete_sweep</span> Purgar Buffer
+                         </button>
+                    </div>
+                </div>
+
+                <div id="draft-container" class="relative group gpu-accelerated">
+                    <div class="absolute -top-4 left-8 px-4 bg-[#020205] text-[10px] font-black tracking-[0.5em] uppercase z-10 border-x transition-colors"
+                         :class="{
+                             'text-blue-400 border-blue-500/40': armedChannel === 'EMAIL',
+                             'text-emerald-400 border-emerald-500/40': armedChannel === 'WHATSAPP',
+                             'text-orange-400 border-orange-500/40': armedChannel === 'SMS',
+                             'text-purple-400 border-purple-500/40': armedChannel === null
+                         }">
+                        Payload Configuration Terminal
+                    </div>
+                    
+                    <div class="relative rounded-[2rem] overflow-hidden border-2 transition-all shadow-[inset_0_0_40px_rgba(0,0,0,1)] bg-[#05050c]/80 backdrop-blur-2xl"
+                         :class="{
+                             'border-blue-900 focus-within:border-blue-500': armedChannel === 'EMAIL',
+                             'border-emerald-900 focus-within:border-emerald-500': armedChannel === 'WHATSAPP',
+                             'border-orange-900 focus-within:border-orange-500': armedChannel === 'SMS',
+                             'border-slate-800 focus-within:border-purple-500': armedChannel === null
+                         }">
+                        
+                        <div class="absolute top-0 left-0 w-12 h-full bg-black/40 border-r border-white/5 flex flex-col items-center pt-8 gap-1 font-mono text-[10px] text-slate-700 pointer-events-none">
+                            <span>01</span><span>02</span><span>03</span><span>04</span><span>05</span><span>06</span>
+                        </div>
+                        
+                        <textarea id="message-box" 
+                                  x-model="payload"
+                                  @input="updatePayloadLength"
+                                  :disabled="activeChannel !== null"
+                                  class="w-full bg-transparent font-bold tracking-widest text-[16px] p-8 pl-16 pr-20 focus:ring-0 border-none transition-all font-mono resize-none custom-scrollbar disabled:opacity-30 disabled:grayscale min-h-[160px]" 
+                                  :class="{
+                                      'text-blue-300': armedChannel === 'EMAIL',
+                                      'text-emerald-300': armedChannel === 'WHATSAPP',
+                                      'text-orange-300': armedChannel === 'SMS',
+                                      'text-purple-300': armedChannel === null
+                                  }"
+                                  rows="6" 
+                                  placeholder="> ELIJA UN VECTOR ARRIBA PARA SINTETIZAR, O ESCRIBA COMANDOS MANUALES..."></textarea>
+                        
+                        <div class="absolute top-8 right-8 flex flex-col gap-4">
+                            <span class="material-symbols-outlined text-slate-800 text-4xl pointer-events-none transition-all duration-700"
+                                  :class="{
+                                      'text-blue-500/50': armedChannel === 'EMAIL',
+                                      'text-emerald-500/50': armedChannel === 'WHATSAPP',
+                                      'text-orange-500/50': armedChannel === 'SMS',
+                                      'group-focus-within:text-purple-500/50': armedChannel === null
+                                  }">terminal</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-8">
+                
+                <button @click="executeFireProtocol('WHATSAPP')" 
+                        :disabled="activeChannel !== null || payloadLength === 0 || (armedChannel !== null && armedChannel !== 'WHATSAPP')"
+                        class="launch-btn group from-[#065f46] to-[#022c22] hover:from-emerald-600 hover:to-[#064e3b] text-emerald-50 border-emerald-500/40 shadow-emerald-900/30">
+                    <span class="shimmer-effect"></span>
+                    <span class="material-symbols-outlined text-[32px] group-hover:scale-110 transition-transform" x-show="activeChannel !== 'WHATSAPP'">forum</span>
+                    <svg x-show="activeChannel === 'WHATSAPP'" class="animate-spin h-8 w-8 text-emerald-300" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    <span class="btn-text">Transmit WABA</span>
+                </button>
+
+                <button @click="executeFireProtocol('EMAIL')" 
+                        :disabled="activeChannel !== null || payloadLength === 0 || (armedChannel !== null && armedChannel !== 'EMAIL')"
+                        class="launch-btn group from-[#1e3a8a] to-[#0f172a] hover:from-blue-600 hover:to-[#1e3a8a] text-blue-50 border-blue-500/40 shadow-blue-900/30">
+                    <span class="shimmer-effect"></span>
+                    <span class="material-symbols-outlined text-[32px] group-hover:scale-110 transition-transform" x-show="activeChannel !== 'EMAIL'">rocket_launch</span>
+                    <svg x-show="activeChannel === 'EMAIL'" class="animate-spin h-8 w-8 text-blue-300" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    <span class="btn-text">Fire Q-Email</span>
+                </button>
+
+                <button @click="executeFireProtocol('SMS')" 
+                        :disabled="activeChannel !== null || payloadLength === 0 || (armedChannel !== null && armedChannel !== 'SMS')"
+                        class="launch-btn group from-[#7c2d12] to-[#431407] hover:from-orange-600 hover:to-[#7c2d12] text-orange-50 border-orange-500/40 shadow-orange-900/30">
+                    <span class="shimmer-effect"></span>
+                    <span class="material-symbols-outlined text-[32px] group-hover:scale-110 transition-transform" x-show="activeChannel !== 'SMS'">cell_tower</span>
+                    <svg x-show="activeChannel === 'SMS'" class="animate-spin h-8 w-8 text-orange-300" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    <span class="btn-text">Twilio Blast</span>
+                </button>
+
+            </div>
+            <div class="text-center font-mono text-[11px] text-slate-600 tracking-[1em] uppercase py-2">
+                Quantum Link Established // GHOST-SWARM Protocol v111 // Deep-Strike Capable
+            </div>
+        </div>
+    </footer>
+</div>
+
+<script>
+    document.body.addEventListener('htmx:configRequest', (event) => {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                          document.cookie.match(/csrftoken=([^;]+)/)?.[1];
+        if (csrfToken) event.detail.headers['X-CSRFToken'] = csrfToken;
+    });
+
+    function omniCommandCenter(institutionId) {
+        return {
+            socket: null,
+            connectionStatus: 'DISCONNECTED', 
+            statusMessage: 'OFFLINE',
+            reconnectAttempts: 0,
+            hasConnectedOnce: false, 
+            
+            liveEvents: [],
+            payload: '', 
+            payloadLength: 0, // Cache de longitud para UI responsiva
+            armedChannel: null, // Sabe si el borrador es para Email, Waba o SMS
+            activeChannel: null, 
+            toasts: [],
+            lastNotificationText: '', 
+
+            init() {
+                console.log("🛠️ OMNI-HYDRA Node Online...");
+                this.connectWebSocket();
+            },
+
+            prepareDrafting(channel) {
+                this.armedChannel = channel;
+                let msj = '';
+                if(channel === 'EMAIL') msj = '🧠 DEEPSEEK: Sintetizando estructura de Email...';
+                if(channel === 'WHATSAPP') msj = '🧠 DEEPSEEK: Generando copia conversacional WABA...';
+                if(channel === 'SMS') msj = '🧠 DEEPSEEK: Comprimiendo vector para SMS...';
+                
+                this.notify('info', msj, 'psychology');
+            },
+
+            clearPayload() {
+                this.payload = '';
+                this.payloadLength = 0;
+                this.armedChannel = null;
+                document.getElementById('message-box').value = '';
+                this.notify('info', 'Buffer purgado. Armas aseguradas.', 'delete');
+            },
+
+            updatePayloadLength() {
+                // Función llamada en cada tipeo manual
+                this.payloadLength = this.payload.trim().length;
+                // Si escriben a mano desde 0, habilitamos todos los botones
+                if(this.payloadLength > 0 && this.armedChannel === null) {
+                    this.armedChannel = null; 
+                }
+            },
+
+            syncPayloadDirect(event) {
+                // Sincronización Post-Inyección IA
+                setTimeout(() => {
+                    const box = document.getElementById('message-box');
+                    if(box) {
+                        this.payload = box.value;
+                        this.payloadLength = this.payload.trim().length;
+                        this.notify('success', 'Neural Ordnance cargada y lista para edición.', 'edit_document');
+                        
+                        // Efecto visual basado en el canal
+                        let ringColor = 'ring-purple-500/50';
+                        if(this.armedChannel === 'EMAIL') ringColor = 'ring-blue-500/50';
+                        if(this.armedChannel === 'WHATSAPP') ringColor = 'ring-emerald-500/50';
+                        if(this.armedChannel === 'SMS') ringColor = 'ring-orange-500/50';
+
+                        box.classList.add('ring-4', ringColor);
+                        setTimeout(() => box.classList.remove('ring-4', ringColor), 800);
+                    }
+                }, 50);
+            },
+
+            connectWebSocket() {
+                this.connectionStatus = 'CONNECTING';
+                this.statusMessage = 'LINKING SAT...';
+                
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws/omni-hydra/`;
+                
+                try {
+                    this.socket = new WebSocket(wsUrl);
+                } catch (e) {
+                    this.handleReconnect();
+                    return;
+                }
+
+                this.socket.onopen = () => {
+                    this.connectionStatus = 'CONNECTED';
+                    this.statusMessage = 'ENLACE ESTABLE';
+                    this.reconnectAttempts = 0;
+                    if (!this.hasConnectedOnce) {
+                        this.notify('info', 'Túnel AES-256 Activo. Uplink Seguro.', 'security', true);
+                        this.hasConnectedOnce = true;
+                    }
+                };
+
+                this.socket.onmessage = (e) => {
+                    const data = JSON.parse(e.data);
+                    if (data.institution_id === institutionId || data.type === 'system_ack') {
+                        if(data.type === 'system_ack') return; 
+
+                        this.liveEvents.push({
+                            id: Date.now() + Math.random(),
+                            time: new Date().toLocaleTimeString([], {hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit'}),
+                            message: data.message || data.event,
+                            type: data.event
+                        });
+                        
+                        this.notify('success', `SEÑAL ENTRANTE: ${data.event}`, 'sensors');
+                        this.scrollToBottom();
+                    }
+                };
+
+                this.socket.onclose = () => {
+                    this.connectionStatus = 'DISCONNECTED';
+                    this.statusMessage = 'SIGNAL LOST';
+                    this.handleReconnect();
+                };
+            },
+
+            handleReconnect() {
+                if (this.reconnectAttempts < 15) {
+                    this.reconnectAttempts++;
+                    setTimeout(() => this.connectWebSocket(), 3000);
+                }
+            },
+
+            scrollToBottom() {
+                this.$nextTick(() => {
+                    const feed = document.getElementById('timeline-feed');
+                    if(feed) feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
+                });
+            },
+
+            notify(type, message, icon, unique = false) {
+                if(unique && this.lastNotificationText === message) return;
+                const id = Date.now();
+                this.lastNotificationText = message;
+                this.toasts.push({ id, type, message, icon, visible: false });
+                
+                setTimeout(() => {
+                    const t = this.toasts.find(toast => toast.id === id);
+                    if(t) t.visible = true;
+                }, 50);
+
+                setTimeout(() => {
+                    const t = this.toasts.find(toast => toast.id === id);
+                    if(t) t.visible = false;
+                    setTimeout(() => { 
+                        this.toasts = this.toasts.filter(toast => toast.id !== id); 
+                    }, 500);
+                }, 5000);
+            },
+
+            async executeFireProtocol(channelTarget) {
+                // Extracción DMA infalible
+                const finalPayload = document.getElementById('message-box').value;
+
+                if(!finalPayload.trim() || this.activeChannel !== null) {
+                    this.notify('error', 'SISTEMA BLOQUEADO: Verifique el buffer.', 'warning');
+                    return;
+                }
+                
+                this.activeChannel = channelTarget;
+                this.notify('info', `ENVIANDO PAYLOAD VIA: ${channelTarget}...`, 'bolt');
+                
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                  document.cookie.match(/csrftoken=([^;]+)/)?.[1];
+
+                const formData = new FormData();
+                formData.append('payload', finalPayload);
+                formData.append('channel', channelTarget);
+
+                try {
+                    const response = await fetch(`/admin/sales/globalpipeline/omni-radar/send/${institutionId}/`, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrfToken },
+                        body: formData
+                    });
+                    
+                    const htmlResponse = await response.text();
+                    const feedbackDiv = document.getElementById('tactical-feedback');
+                    
+                    if (response.ok && htmlResponse.includes('MISIL LANZADO')) {
+                        if(feedbackDiv) {
+                            feedbackDiv.innerHTML = htmlResponse;
+                            feedbackDiv.className = "absolute -top-20 left-0 w-full px-12 flex justify-center z-[110] animate-in fade-in slide-in-from-bottom-8 duration-500";
+                        }
+                        this.notify('success', `OPERACIÓN EXITOSA: Protocolo ${channelTarget} completado.`, 'verified');
+                        this.clearPayload(); // Purgar la recámara
+                        
+                        setTimeout(() => { if(feedbackDiv) feedbackDiv.innerHTML = ''; }, 6000);
+                    } else {
+                        this.notify('error', 'ERROR DE TRAYECTORIA: El servidor rechazó la transmisión.', 'gpp_bad');
+                    }
+                } catch(err) {
+                    this.notify('error', `RED COMPROMETIDA: ${err.message}`, 'wifi_off');
+                } finally {
+                    this.activeChannel = null;
+                }
+            }
+        }
+    }
+</script>
+
+<style>
+    /* [LEVIATHAN SUPREME ENGINE STYLES] */
+    :root { color-scheme: dark; }
+
+    .launch-btn {
+        @apply relative overflow-hidden bg-gradient-to-br py-8 px-6 rounded-[2rem] font-black uppercase tracking-[0.4em] text-[14px] transition-all shadow-2xl flex flex-col items-center justify-center gap-3 active:scale-[0.95] border-2 disabled:opacity-20 disabled:grayscale;
+        display: flex;
+    }
+
+    .btn-text { @apply drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]; }
+
+    .shimmer-effect {
+        @apply absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full pointer-events-none;
+    }
+    .launch-btn:not(:disabled):hover .shimmer-effect { animation: shimmer 2s infinite; }
+
+    .htmx-indicator { display:none; opacity: 0; transition: opacity 400ms cubic-bezier(0.4, 0, 0.2, 1); }
+    .htmx-request .htmx-indicator { display:inline-block; opacity: 1; }
+    .htmx-request .htmx-request-hide { display:none !important; }
+    
+    .gpu-accelerated { transform: translateZ(0); will-change: transform, scroll-position; }
+    
+    @keyframes slideUpFade { 
+        from { opacity: 0; transform: translateY(50px) scale(0.9); filter: blur(20px); } 
+        to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } 
+    }
+    .timeline-item-enter { animation: slideUpFade 0.8s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+    
+    @keyframes laser-scan {
+        0% { transform: translate(-50%, -100%); opacity: 0; }
+        10% { opacity: 1; }
+        90% { opacity: 1; }
+        100% { transform: translate(-50%, 1200px); opacity: 0; }
+    }
+    
+    .cyber-grid {
+        background-image: 
+            linear-gradient(to right, rgba(168, 85, 247, 0.15) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(168, 85, 247, 0.15) 1px, transparent 1px);
+        background-size: 60px 60px;
+        mask-image: radial-gradient(circle at center, black 40%, transparent 95%);
+        -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 95%);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar { width: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.6); border-radius: 20px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { 
+        background: linear-gradient(to bottom, #7c3aed, #2563eb); 
+        border-radius: 20px; 
+        border: 2px solid rgba(0,0,0,0.9); 
+    }
+
+    .text-shadow-glow { text-shadow: 0 0 30px rgba(168, 85, 247, 0.9); }
+    @keyframes shimmer { 100% { transform: translateX(100%); } }
+    
+    .animate-pulse-fast { animation: pulse 0.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+    .animate-in { animation-duration: 0.5s; animation-fill-mode: both; }
+    .fade-in { animation-name: fadeIn; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .slide-in-from-bottom-8 { animation-name: slideInBottom; }
+    @keyframes slideInBottom { from { transform: translateY(2rem); } to { transform: translateY(0); } }
+</style>
+
+</body>
+</html>
