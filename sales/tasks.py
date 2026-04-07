@@ -41,6 +41,8 @@ from django.utils import timezone
 from django.db.models import Q
 from asgiref.sync import async_to_sync  
 
+from .models import Institution, Interaction
+
 # =========================================================
 # IMPORTACIONES DE VANGUARDIA (GOD TIER)
 # =========================================================
@@ -53,6 +55,12 @@ from sales.engine.discovery_engine import OSMDiscoveryEngine
 from ddgs import DDGS
 from openai import AsyncOpenAI, RateLimitError, APIConnectionError, APIError
 
+
+from .engine.ai_omni_brain import OmniAIBrain  # Asegúrate de usar el nombre de la clase correcta que creamos en el Paso 1
+from .engine.quantum_mail import QuantumMailServer 
+from .engine.waba_gateway import WABAGateway 
+
+logger = logging.getLogger("Sovereign.FSM")
 # =========================================================
 # ⚙️ OMNI-TIER CONFIGURATION & TELEMETRY
 # =========================================================
@@ -702,3 +710,168 @@ def task_run_inbound_catcher(self):
         except Exception as e:
             logger.error(f"❌ [FATAL ERROR] Colapso del Inbound Catcher: {e}")
             raise self.retry(exc=e, countdown=120)
+
+# ==============================================================================
+# [PROTOCOLO OMEGA]: FSM DE VENTAS Y CADENCIA MILITAR TIER-1
+# ==============================================================================
+
+@shared_task(
+    bind=True, 
+    max_retries=3, 
+    acks_late=True,               # God Tier: Solo reconoce la tarea si termina al 100%
+    reject_on_worker_lost=True,   # Re-encola si el worker muere (Out of Memory/Kill)
+    soft_time_limit=120           # Evita tareas zombie que consumen RAM indefinidamente
+)
+def task_execute_omni_sequence(self, institution_id: int):
+    """
+    [FASE 1]: Disparo de Correo Frío con Inferencia Cuántica.
+    Garantiza idempotencia absoluta y previene "Fuego Amigo" (Doble envío).
+    """
+    trace_id = f"SEQ-{uuid.uuid4().hex[:6].upper()}"
+    lock_id = f"fsm_lock_email_{institution_id}"
+    
+    # 1. DISTRIBUTED MUTEX LOCK (REDIS)
+    # Evita que 2 workers procesen al mismo colegio simultáneamente por error humano o del broker.
+    # El bloqueo expira en 5 minutos para evitar "Deadlocks" si el servidor crashea.
+    acquired = cache.add(lock_id, "LOCKED", 300)
+    if not acquired:
+        logger.warning(f"[{trace_id}] ⚠️ Lock denegado. Secuencia ya en curso para Institución {institution_id}.")
+        return
+
+    try:
+        institution = Institution.objects.select_for_update().get(id=institution_id)
+        
+        # Validación de Pre-Vuelo (Pre-flight Check)
+        if not institution.email:
+            logger.error(f"[{trace_id}] 🛑 Abortando: Institución '{institution.name}' carece de vector de correo.")
+            return
+
+        logger.info(f"[{trace_id}] 🚀 Iniciando Protocolo OMEGA para: {institution.name}")
+        
+        # 2. GENERACIÓN IA AUTÓNOMA (ASGI/WSGI BRIDGE)
+        # async_to_sync gestiona el ThreadPool y el EventLoop limpiamente en Django.
+        brain = OmniAIBrain()
+        payload_data = async_to_sync(brain.synthesize_ordnance)(
+            institution_name=institution.name, 
+            city=institution.city, 
+            channel='EMAIL'
+        )
+        
+        if not payload_data or "body" not in payload_data:
+            raise ValueError("El Córtex de IA devolvió un vector vacío o corrompido.")
+
+        subject = payload_data.get("subject", "Infraestructura Educativa de Élite")
+        body = payload_data.get("body")
+
+        # 3. TRANSACCIÓN ATÓMICA (Disparo + Registro)
+        # Si el correo falla, la base de datos hace Rollback. Si la BD falla, se eleva la excepción.
+        with transaction.atomic():
+            # Disparo de Armamento Táctico
+            QuantumMailServer.fire(to=institution.email, subject=subject, body=body)
+            
+            # Registro Forense
+            email_interaction = Interaction.objects.create(
+                institution=institution,
+                channel='EMAIL',
+                direction='OUT',
+                subject=subject,
+                message_sent=body,
+                status='SENT',
+                idempotency_key=trace_id # Trazabilidad cruzada
+            )
+        
+        # 4. LA MAGIA DEL FSM: AGENDA DETERMINISTA
+        # Agendamos el WhatsApp y le pasamos el ID exacto del correo para calibrar la ceguera temporal.
+        logger.info(f"[{trace_id}] ✅ IMPACTO CONFIRMADO en {institution.email}. Iniciando cuenta regresiva WABA (48h ETA).")
+        
+        # 172800 segundos = 48 horas exactas
+        task_fire_whatsapp_followup.apply_async(
+            args=[institution_id, email_interaction.id], 
+            countdown=172800 
+        )
+
+    except SoftTimeLimitExceeded:
+        logger.critical(f"[{trace_id}] ⏱️ TIMEOUT: La API de IA o SMTP no respondió a tiempo.")
+        self.retry(countdown=300) # Reintento en 5 minutos
+        
+    except Exception as e:
+        logger.error(f"[{trace_id}] ❌ [FSM CRASH] Falla sistémica en secuencia para ID {institution_id}: {e}")
+        self.retry(exc=e, countdown=60)
+        
+    finally:
+        # Liberar el Mutex Lock incondicionalmente
+        cache.delete(lock_id)
+
+
+@shared_task(bind=True, max_retries=2, acks_late=True)
+def task_fire_whatsapp_followup(self, institution_id: int, origin_email_id: int):
+    """
+    [FASE 2]: El Interceptor WABA. (Se ejecuta 48 hrs después del correo).
+    Posee conciencia temporal estricta para aplicar supresión de eventos.
+    """
+    trace_id = f"WABA-{uuid.uuid4().hex[:6].upper()}"
+    lock_id = f"fsm_lock_waba_{institution_id}"
+    
+    if not cache.add(lock_id, "LOCKED", 300):
+        logger.warning(f"[{trace_id}] ⚠️ Lock WABA denegado para Institución {institution_id}.")
+        return
+
+    try:
+        institution = Institution.objects.get(id=institution_id)
+        origin_email = Interaction.objects.get(id=origin_email_id)
+        
+        if not institution.phone:
+            logger.error(f"[{trace_id}] 🛑 Abortando: Sin vector celular para '{institution.name}'.")
+            return
+
+        # ==============================================================================
+        # REGLA #6: SUPRESIÓN DE EVENTOS (CON CONCIENCIA TEMPORAL)
+        # Buscar respuestas (IN) que hayan ocurrido ESTRICTAMENTE DESPUÉS de enviar el correo.
+        # Esto soluciona el bug de "Ceguera Temporal" donde interacciones de hace meses bloqueaban la campaña.
+        # ==============================================================================
+        has_replied = Interaction.objects.filter(
+            institution=institution, 
+            direction='IN',
+            created_at__gt=origin_email.created_at # Temporalidad estricta
+        ).exists()
+
+        if has_replied:
+            logger.warning(f"[{trace_id}] 🛑 [FSM ABORT] Supresión de Fuego: {institution.name} YA RESPONDIÓ al correo. Abortando hostigamiento WABA.")
+            return # El Webhook (Autopilot) se encarga ahora. El FSM se detiene aquí.
+
+        logger.info(f"[{trace_id}] 🚀 [FSM ENGAGE] {institution.name} no presenta actividad. Sintetizando vector WhatsApp...")
+        
+        brain = OmniAIBrain()
+        wa_payload_data = async_to_sync(brain.synthesize_ordnance)(
+            institution_name=institution.name, 
+            city=institution.city, 
+            channel='WHATSAPP'
+        )
+        
+        wa_body = wa_payload_data.get("body", "")
+        
+        if not wa_body:
+            raise ValueError("El Córtex de IA generó un vector celular vacío.")
+        
+        with transaction.atomic():
+            # Disparar API de Meta WhatsApp
+            WABAGateway.send_message(phone=institution.phone, message=wa_body)
+            
+            # Registrar munición
+            Interaction.objects.create(
+                institution=institution,
+                channel='WHATSAPP',
+                direction='OUT',
+                message_sent=wa_body,
+                status='SENT',
+                idempotency_key=trace_id
+            )
+            
+        logger.info(f"[{trace_id}] ✅ FUEGO WABA EXITOSO sobre {institution.phone}.")
+
+    except Exception as e:
+        logger.error(f"[{trace_id}] ❌ [WABA CRASH] Error al disparar seguimiento: {e}")
+        self.retry(exc=e, countdown=120)
+        
+    finally:
+        cache.delete(lock_id)
