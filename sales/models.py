@@ -20,7 +20,14 @@ from django.db.models.functions import Coalesce, Concat
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-
+from asgiref.sync import async_to_sync
+from celery import shared_task
+from django.core.mail import send_mail
+from django.conf import settings
+#from .models import Contact, DeepForensicProfile, OutreachSequence
+from .engine.deepseek_sales_brain import QuantumSalesArchitect
+import logging
+logger = logging.getLogger(__name__)
 # ======================================================================
 # 0. CORE: ABSTRACT BASE (AUDIT TRAIL & DDD) - OMEGA ENHANCED
 # ======================================================================
@@ -612,47 +619,173 @@ class DeepForensicProfile(TimeStampedModel):
 # 3. CRM & OUTREACH: TARGETS & INTERACTIONS (AI MEMORY ENGINE) - OMEGA
 # ======================================================================
 
+# ==============================================================================
+# [GOD TIER] MODELO CONTACT (Omega)
+# ==============================================================================
 class Contact(TimeStampedModel):
     """[OMEGA] Contacto humano con scoring y trazabilidad completa."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='contacts')
+    institution = models.ForeignKey(
+        'Institution', 
+        on_delete=models.CASCADE, 
+        related_name='contacts'
+    )
     
+    # --- DATOS DE IDENTIDAD ---
     name = models.CharField(max_length=255)
     role = models.CharField(max_length=255, blank=True, null=True, db_index=True)
-    email = models.EmailField(blank=True, null=True, unique=True)
+    email = models.EmailField(blank=True, null=True, unique=True, db_index=True)
     linkedin = models.URLField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
     
-    # Scoring del contacto
-    contact_score = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    # --- MOTOR DE ESTADOS (FSM) ---
+    STATUS_CHOICES = [
+        ('LEAD', '🔥 Lead Nuevo'),
+        ('RESEARCHING', '🔍 En Investigación AI'),
+        ('EMAIL_SENT', '📧 Email Enviado'),
+        ('WHATSAPP_SENT', '📱 WhatsApp Enviado'),
+        ('REPLIED', '💬 Respondió'),
+        ('ENGAGED', '🎯 Interesado'),
+        ('PAUSED', '⛔ Pausado'),
+        ('REJECTED', '❌ No Interesado'),
+        ('CONVERTED', '🏆 Cliente'),
+    ]
+    
+    status = models.CharField(
+        max_length=30, 
+        choices=STATUS_CHOICES, 
+        default='LEAD',
+        db_index=True
+    )
+
+    # --- GOBERNANZA ---
+    pause_automations = models.BooleanField(default=False)
     is_decision_maker = models.BooleanField(default=False, db_index=True)
     is_technical_contact = models.BooleanField(default=False)
+
+    # --- SCORING ---
+    contact_score = models.IntegerField(
+        default=0, 
+        validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
+
+    # --- AI MEMORY ---
+    last_ai_thought_process = models.TextField(blank=True, null=True)
+    last_ai_subject = models.CharField(max_length=255, blank=True, null=True)
+    ai_metadata = models.JSONField(default=dict, blank=True)
+
+    # --- TRAZABILIDAD ---
+    last_contacted_at = models.DateTimeField(blank=True, null=True)
+    next_followup_at = models.DateTimeField(blank=True, null=True)
     
-    # Metadata de contacto
+    # --- VALIDACIÓN ---
     is_valid_email = models.BooleanField(default=True)
     email_validation_date = models.DateTimeField(blank=True, null=True)
-    last_contacted_at = models.DateTimeField(blank=True, null=True)
     
-    # Preferencias de contacto
     preferred_channel = models.CharField(max_length=20, choices=[
         ('email', 'Email'),
         ('whatsapp', 'WhatsApp'),
         ('phone', 'Teléfono'),
         ('linkedin', 'LinkedIn')
     ], default='email')
-    
+
     class Meta:
         verbose_name = "Contacto (Omega)"
         verbose_name_plural = "Contactos (Omega)"
+        # 🔥 FIX DEFINITIVO: created_at 
+        ordering = ['-contact_score', '-created_at'] 
         indexes = [
-            models.Index(fields=['institution', 'role'], name='idx_inst_role'),
-            models.Index(fields=['is_decision_maker', 'contact_score'], name='idx_dm_score'),
-            models.Index(fields=['email'], name='idx_contact_email'),
+            models.Index(fields=['status', 'pause_automations'], name='idx_con_st_pau'),
+            models.Index(fields=['institution', 'status'], name='idx_con_inst_st'),
+            models.Index(fields=['email'], name='idx_con_em_unq'),
+            models.Index(fields=['is_decision_maker', 'contact_score'], name='idx_con_dm_pr'),
         ]
 
     def __str__(self):
-        dm_icon = "👑" if self.is_decision_maker else "👤"
-        return f"{dm_icon} {self.name} | {self.role} | {self.email or 'No email'}"
+        icon = "🟢" if not self.pause_automations else "🔴"
+        return f"{icon} {self.name} | {self.status} | Score: {self.contact_score}"
+
+    def trigger_kill_switch(self):
+        self.pause_automations = True
+        self.status = 'REPLIED'
+        self.save()
+
+    @property
+    def can_be_automated(self):
+        return not self.pause_automations and self.status not in ['REJECTED', 'CONVERTED', 'PAUSED']
+
+
+# ==============================================================================
+# [GOD TIER] MODELO INTERACTION (Cosmic)
+# ==============================================================================
+class Interaction(TimeStampedModel):
+    """
+    Registro inmutable de todas las interacciones (Correos, WhatsApp, Notas).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(
+        'Institution', 
+        on_delete=models.CASCADE, 
+        related_name='interactions'
+    )
+    contact = models.ForeignKey(
+        Contact, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='interactions'
+    )
+    
+    # Asegúrate de mantener tus campos originales aquí si tenías más. 
+    # Añadí los campos mínimos que mencionas en los índices para que compile perfecto.
+    channel = models.CharField(max_length=50, blank=True, null=True)
+    status = models.CharField(max_length=50, blank=True, null=True)
+    direction = models.CharField(max_length=50, blank=True, null=True)
+    replied = models.BooleanField(default=False)
+    thread_id = models.CharField(max_length=255, blank=True, null=True)
+    next_action_date = models.DateTimeField(blank=True, null=True)
+    
+    # Campo de contenido (Opcional, pero necesario para historial)
+    content = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "🌌 Interacción B2B (Cosmic)"
+        verbose_name_plural = "🌌 Interacciones B2B (Cosmic)"
+        
+        indexes = [
+            # 🔥 FIX DEFINITIVO: Nombre de índice único para evitar colisión con Contact
+            models.Index(fields=['institution', 'status'], name='idx_int_inst_status'),
+            models.Index(fields=['status', 'replied'], name='idx_status_replied'),
+            models.Index(fields=['thread_id', 'created_at'], name='idx_thread_created'),
+            models.Index(fields=['next_action_date'], name='idx_next_action'),
+            models.Index(fields=['channel', 'status'], name='idx_channel_status'),
+            models.Index(fields=['contact', 'created_at'], name='idx_contact_created'),
+            models.Index(fields=['institution', 'direction', 'created_at'], name='idx_inst_dir_created'),
+        ]
+
+    
+
+    def __str__(self):
+        return f"{self.name} | {self.status}"
+
+    def trigger_kill_switch(self):
+        self.pause_automations = True
+        self.status = 'REPLIED'
+        self.save()
+
+    @property
+    def can_be_automated(self):
+        return not self.pause_automations and self.status not in ['REJECTED', 'CONVERTED', 'PAUSED']
+
+# ==============================================================================
+# IMPORTANTE: También debes revisar el modelo Interaction para evitar choques
+# ==============================================================================
+class Interaction(TimeStampedModel):
+    # ... otros campos de Interaction ...
+    # Asegúrate de que si Interaction tiene un índice llamado 'idx_inst_status',
+    # lo renombres a 'idx_int_inst_stat' para mantener la unicidad global.
+    pass
 
 
 class Interaction(TimeStampedModel):
@@ -954,3 +1087,107 @@ class GeoRadarWorkspace(Institution):
         app_label = 'sales'
         verbose_name = "3. 🛰️ Geospatial Radar (Omega)"
         verbose_name_plural = "3. 🛰️ Geospatial Radar (Omega)"
+
+
+# ==============================================================================
+# PASO 1: EL DISPARO DEL CORREO MAESTRO
+# ==============================================================================
+@shared_task(bind=True, max_retries=3)
+def execute_step_1_email(self, contact_id: int):
+    try:
+        target = Contact.objects.select_related('institution').get(id=contact_id)
+        profile = DeepForensicProfile.objects.get(institution=target.institution)
+        
+        # 1. Aseguramos que no se le envíe dos veces
+        sequence, created = OutreachSequence.objects.get_or_create(contact=target)
+        if sequence.status != 'PENDING':
+            logger.warning(f"Abortado: {target.email} ya está en la secuencia ({sequence.status})")
+            return
+            
+        # 2. Encendemos el Cerebro Cuántico
+        brain = QuantumSalesArchitect(api_key=settings.DEEPSEEK_API_KEY)
+        pitch = async_to_sync(brain.generate_learning_labs_pitch)(
+            school_name=target.institution.name,
+            ai_school_report=profile.ai_comprehensive_report
+        )
+        
+        # 3. Disparamos el correo real
+        send_mail(
+            subject=pitch['email_subject'],
+            message=pitch['email_body'],
+            from_email=settings.DEFAULT_FROM_EMAIL, # Ej: isaac.miller@learninglabs.com
+            recipient_list=[target.email],
+            fail_silently=False,
+        )
+        
+        # 4. Guardamos la Memoria y actualizamos estado
+        sequence.status = 'EMAIL_SENT'
+        sequence.email_sent_at = timezone.now()
+        sequence.ai_thought_process_memory = pitch['thought_process']
+        sequence.save()
+        
+        logger.info(f"ÉXITO: Correo $1M enviado a {target.email}")
+        
+        # 5. EL TRUCO GOD-TIER: Programamos el WhatsApp para dentro de 3 días (72 horas)
+        # Celery esperará silenciosamente este tiempo antes de ejecutar el Paso 2
+        execute_step_2_whatsapp.apply_async(args=[sequence.id], countdown=72 * 3600)
+        
+        return "Paso 1 Completado y Paso 2 Programado."
+
+    except Exception as e:
+        logger.error(f"Fallo crítico en Step 1 para contacto {contact_id}: {e}")
+        self.retry(exc=e, countdown=60) # Reintenta en 1 minuto si falla la red
+
+
+# ==============================================================================
+# PASO 2: EL SEGUIMIENTO QUIRÚRGICO POR WHATSAPP (3 DÍAS DESPUÉS)
+# ==============================================================================
+@shared_task
+def execute_step_2_whatsapp(sequence_id: int):
+    sequence = OutreachSequence.objects.select_related('contact__institution').get(id=sequence_id)
+    
+    # 1. Chequeo de seguridad: Si el cliente ya respondió al correo, abortamos el WhatsApp
+    if sequence.status in ['REPLIED', 'MEETING_BOOKED']:
+        return "Abortado: El cliente ya respondió o agendó. No seremos spam."
+        
+    # 2. Aquí extraeríamos el pensamiento de la IA para pasárselo a tu API de WhatsApp
+    memoria_ia = sequence.ai_thought_process_memory
+    telefono = sequence.contact.phone_number
+    colegio = sequence.contact.institution.name
+    
+    # Próximo paso: Integrar el LLM para que redacte un WhatsApp de 40 palabras
+    # basado en 'memoria_ia' y enviarlo usando Twilio, Meta API, o Gupshup.
+    
+    logger.info(f"Preparando WhatsApp para {telefono} del {colegio} basado en: {memoria_ia}")
+    
+    # sequence.status = 'WHATSAPP_SENT'
+    # sequence.whatsapp_sent_at = timezone.now()
+    # sequence.save()
+    
+    return "Paso 2: WhatsApp preparado."
+
+class OutreachSequence(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pendiente de Inicio'),
+        ('EMAIL_SENT', 'Correo Enviado (Paso 1)'),
+        ('WHATSAPP_SENT', 'WhatsApp Enviado (Paso 2)'),
+        ('SMS_SENT', 'SMS Enviado (Paso 3)'),
+        ('REPLIED', 'El cliente respondió (Cacería Pausada)'),
+        ('MEETING_BOOKED', 'Reunión Agendada (ÉXITO)'),
+        ('BOUNCED', 'Error de envío'),
+    ]
+
+    contact = models.ForeignKey('Contact', on_delete=models.CASCADE, related_name='outreach_sequences')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    
+    ai_thought_process_memory = models.TextField(blank=True, null=True) 
+    
+    email_sent_at = models.DateTimeField(blank=True, null=True)
+    whatsapp_sent_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Secuencia de Prospección"
+        verbose_name_plural = "Secuencias de Prospección"
+
+    def __str__(self):
+        return f"[{self.status}] {self.contact.email} - {self.contact.institution.name}"

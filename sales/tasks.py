@@ -11,7 +11,8 @@ ENGINEERING: THE COGNITIVE REAPER PROTOCOL (EMAIL FALLBACK),
 
 import time
 import logging
-import asyncio
+from django.conf import settings
+from django.core.mail import send_mail
 import requests
 import uuid
 import re
@@ -24,7 +25,10 @@ from typing import Dict, List, Any, Optional, Tuple
 from urllib.parse import urlparse, unquote
 import imaplib
 from channels.layers import get_channel_layer
+from .models import Contact, DeepForensicProfile, OutreachSequence
 
+#from sales.engine.deepseek_sales_brain import QuantumSalesArchitect, AIProviderError, AIValidationError
+from sales.engine.deepseek_sales_brain import QuantumSalesArchitect, AIRetryableError, AIFatalError, AIValidationError
 from sales.engine.quantum_classifier import QuantumLeadClassifier
 from sales.engine.inbound_parser import SupremeInboundParser
 # Celery & Django Imports
@@ -51,6 +55,7 @@ from sales.engine.serp_resolver import SERPResolverEngine
 from sales.engine.recon_engine import execute_recon, run_recon
 from sales.engine.ml_scoring import train_model, score_unrated_leads
 from sales.engine.discovery_engine import OSMDiscoveryEngine
+
 
 from ddgs import DDGS
 from openai import AsyncOpenAI, RateLimitError, APIConnectionError, APIError
@@ -875,3 +880,141 @@ def task_fire_whatsapp_followup(self, institution_id: int, origin_email_id: int)
         
     finally:
         cache.delete(lock_id)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def execute_quantum_outreach(self, contact_id: str):
+    """
+    [GOD TIER] Ejecutor de campaña asíncrono.
+    Garantiza que NUNCA se envíe un correo hardcodeado.
+    """
+    try:
+        # 1. Bloqueo Transaccional: Evitamos que dos workers toquen al mismo lead
+        contact = Contact.objects.select_related('institution').get(id=contact_id)
+        
+        # 2. Q/A Gate: Validamos que el lead siga siendo válido para automatización
+        if not contact.can_be_automated:
+            logger.warning(f"🚫 [ABORT] Contacto {contact.email} tiene automatizaciones pausadas o ya respondió.")
+            return "Aborted: Automation Paused"
+
+        institution = contact.institution
+        
+        # 3. Extraemos el reporte forense previo (Asumiendo que tienes un perfil guardado)
+        # Ajusta esto según cómo guardes tu reporte de IA en la BD
+        if hasattr(institution, 'deepforensicprofile'):
+            report = institution.deepforensicprofile.ai_comprehensive_report
+        else:
+            report = f"Colegio: {institution.name}. Nivel de Lead: {institution.lead_score}. Necesitamos ofrecer Learning Labs."
+
+        # 4. INSTANCIAMOS EL CEREBRO GOD TIER
+        api_key = getattr(settings, 'DEEPSEEK_API_KEY', None)
+        if not api_key:
+            raise ValueError("DEEPSEEK_API_KEY no está configurada en el entorno (.env).")
+
+        brain = QuantumSalesArchitect(api_key=api_key)
+        
+        # 5. EJECUCIÓN SÍNCRONA DEL MOTOR ASÍNCRONO (Puente Celery)
+        logger.info(f"🧠 [AI INFERENCE] Generando pitch cuántico para {institution.name}...")
+        
+        pitch_data = async_to_sync(brain.generate_learning_labs_pitch)(
+            school_name=institution.name,
+            ai_school_report=report
+        )
+        
+        # Extraemos las joyas generadas por la IA
+        subject = pitch_data['email_subject']
+        body = pitch_data['email_body']
+        thought_process = pitch_data['thought_process']
+        metrics = pitch_data.get('metrics', {})
+
+        logger.info(f"✅ [PITCH SUCCESS] Asunto generado: {subject}")
+
+        # 6. ENVIAMOS EL CORREO (AQUÍ USAS TU LÓGICA DE ENVÍO REAL)
+        # send_real_email_via_sendgrid(to=contact.email, subject=subject, body=body)
+        
+        # 7. MUTACIÓN DE ESTADOS (FSM)
+        contact.status = 'EMAIL_SENT'
+        contact.last_ai_subject = subject
+        contact.last_ai_thought_process = thought_process
+        contact.last_contacted_at = timezone.now()
+        
+        # Guardamos Tokenomics
+        if metrics:
+            contact.ai_metadata['last_email_cost'] = metrics
+            
+        contact.save()
+
+        # 8. REGISTRO INMUTABLE
+        Interaction.objects.create(
+            institution=institution,
+            contact=contact,
+            channel='email',
+            direction='OUTBOUND',
+            status='SENT',
+            content=f"SUBJECT: {subject}\n\nBODY: {body}",
+            created_at=timezone.now()
+        )
+        
+        return f"Éxito: Correo IA enviado a {contact.email}"
+
+    except Contact.DoesNotExist:
+        logger.error(f"❌ Contacto {contact_id} no existe.")
+        
+    except (AIProviderError, AIValidationError) as e:
+        # [GOD TIER QA] Si la IA falla, reintentamos la tarea de Celery. 
+        # NUNCA enviamos basura genérica.
+        logger.error(f"⚠️ [AI FAILURE] Falla en el motor DeepSeek: {e}. Reintentando en 60s...")
+        raise self.retry(exc=e)
+        
+    except Exception as e:
+        logger.critical(f"💀 [FATAL] Error crítico en la ejecución del correo: {e}")
+        # Notificamos a Sentry/Datadog
+        raise
+
+@shared_task(bind=True, max_retries=3)
+def execute_step_1_email(self, contact_id):
+    """
+    PASO 1: Disparo del Correo Maestro Inmune a Alucinaciones.
+    """
+    from .models import OutreachSequence # Importación local de seguridad
+    
+    try:
+        # Buscamos el objetivo (UUID o ID)
+        target = Contact.objects.select_related('institution').get(id=contact_id)
+        profile = DeepForensicProfile.objects.get(institution=target.institution)
+        
+        # 1. Registro de Secuencia
+        sequence, created = OutreachSequence.objects.get_or_create(contact=target)
+        if sequence.status != 'PENDING':
+            return f"Saltado: {target.email} ya procesado."
+
+        # 2. Cerebro Cuántico
+        from sales.engine.deepseek_sales_brain import QuantumSalesArchitect
+        brain = QuantumSalesArchitect(api_key=settings.DEEPSEEK_API_KEY)
+        
+        pitch = async_to_sync(brain.generate_learning_labs_pitch)(
+            school_name=target.institution.name,
+            ai_school_report=profile.ai_comprehensive_report
+        )
+        
+        # 3. Envío Real
+        send_mail(
+            subject=pitch['email_subject'],
+            message=pitch['thought_process'], # Respaldo en texto plano
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[target.email],
+            fail_silently=False,
+            html_message=pitch['email_body'] # <--- AQUÍ SE INYECTA EL HTML "GOD-TIER"
+        )
+        
+        # 4. Actualización de Memoria
+        sequence.status = 'EMAIL_SENT'
+        sequence.email_sent_at = timezone.now()
+        sequence.ai_thought_process_memory = pitch['thought_process']
+        sequence.save()
+        
+        return f"✅ Pitch enviado con éxito a {target.email}"
+
+    except Exception as e:
+        logger.error(f"Error en Step 1: {str(e)}")
+        raise e

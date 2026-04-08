@@ -241,7 +241,7 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = get_env_var('EMAIL_HOST_USER', required=True)
 EMAIL_HOST_PASSWORD = SMTP_PASSWORD
 
-DEFAULT_FROM_EMAIL = f"Sovereign Intelligence <{EMAIL_HOST_USER}>"
+DEFAULT_FROM_EMAIL = f"Learning Labs <{EMAIL_HOST_USER}>"
 SERVER_EMAIL = EMAIL_HOST_USER
 
 IMAP_SERVER = get_env_var("IMAP_SERVER", "imap.gmail.com")
