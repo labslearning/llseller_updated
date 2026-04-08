@@ -90,8 +90,8 @@ MASTER_EMAIL_HTML: Final = """
     <div class="wrapper">
         <div class="container">
             <div class="header">
-                <h1>Learning Labs</h1>
-                <p>Evolucionamos la educación</p>
+                <h1>LMS avanzado</h1>
+                <p>Simuladores educativos</p>
             </div>
             
             <div class="content">

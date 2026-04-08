@@ -249,6 +249,8 @@ IMAP_PORT = 993
 IMAP_USERNAME = EMAIL_HOST_USER
 IMAP_PASSWORD = EMAIL_HOST_PASSWORD
 
+
+
 # ==============================================================================
 # 📊 [NIVEL DIOS 8]: ENTERPRISE OBSERVABILITY (LOGGING)
 # ==============================================================================
