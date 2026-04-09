@@ -766,40 +766,62 @@ https://learninglabs.ai"""
         from datetime import datetime
         import uuid
 
+        # 1. Validación de Seguridad de Alto Nivel
         if not request.user.is_authenticated or not request.user.is_staff:
-            return HttpResponse('<div class="text-red-500 bg-red-900/20 p-4 rounded border border-red-500/50">⛔ 403 Forbidden</div>', status=403)
+            return HttpResponse(
+                '<div class="text-red-600 bg-red-50 p-4 rounded-xl border border-red-200 shadow-sm font-sans flex items-center gap-2">'
+                '<span class="material-symbols-outlined">block</span> ⛔ 403 Forbidden: Acceso Denegado</div>', 
+                status=403
+            )
 
         inst = get_object_or_404(Institution, id=institution_id)
         
-        # Recuperamos los datos del formulario HTMX puro
+        # 2. Extracción y Saneamiento de Datos del Payload HTMX
         payload = request.POST.get('payload', '').strip()
         subject = request.POST.get('subject', '').strip() or f"Optimizando operaciones en {inst.name}"
         channel = request.POST.get('channel', 'EMAIL').strip().upper()
         
         if not payload:
-            return HttpResponse('<div class="text-red-400 p-4 bg-red-900/20 border border-red-500/50 rounded-xl mt-4 font-mono text-xs">❌ ABORTO: El payload está vacío. Escribe un mensaje antes de disparar.</div>')
+            return HttpResponse(
+                '<div class="text-amber-700 p-4 bg-amber-50 border border-amber-200 rounded-xl mt-4 font-mono text-sm shadow-sm flex items-center gap-2">'
+                '<span class="material-symbols-outlined">warning</span> ❌ ABORTO: El payload está vacío. Escribe un mensaje antes de disparar.</div>'
+            )
 
+        # 3. Resolución del Objetivo (Target)
         contact = inst.contacts.filter(is_decision_maker=True).first() or inst.contacts.first()
-        
         if not contact or not contact.email:
-            return HttpResponse('<div class="text-red-400 p-4 bg-red-900/20 border border-red-500/50 rounded-xl mt-4 font-mono text-xs">❌ ABORTO: No hay email registrado para este objetivo en el Vault.</div>')
+            return HttpResponse(
+                '<div class="text-amber-700 p-4 bg-amber-50 border border-amber-200 rounded-xl mt-4 font-mono text-sm shadow-sm flex items-center gap-2">'
+                '<span class="material-symbols-outlined">person_off</span> ❌ ABORTO: No hay email registrado para este objetivo en el Vault.</div>'
+            )
 
         thread_id = str(uuid.uuid4())
 
-        # 🔥 TEMPLATE HTML GOD-TIER (1 MILLION DOLLAR AESTHETIC) 🔥
-        # Convertimos saltos de línea en párrafos reales para una lectura fluida
+        # =================================================================
+        # 🔥 TEMPLATE HTML GOD-TIER (AESTHETIC & COGNITIVE ERGONOMICS) 🔥
+        # =================================================================
         paragraphs = payload.split('\n\n')
         formatted_payload = ""
+        
         for p in paragraphs:
             if p.strip():
-                # Detectar si el párrafo es un ítem de lista (ej: "⚖️ Erradicación...")
+                # Detectar si el párrafo es un pilar estratégico (ítem de lista)
                 if any(p.strip().startswith(icon) for icon in ['⚖️', '🧠', '👨‍🏫', '🚀', '🛡️']):
-                    formatted_payload += f'<div style="margin-bottom: 20px; padding-left: 15px; border-left: 3px solid #3B82F6;">{p.replace(chr(10), "<br>")}</div>'
+                    # Renderizado en formato "Tarjeta Suave" (Soft Card) para máxima lectura
+                    formatted_payload += f'''
+                        <div style="background-color: #F8FAFC; border-left: 4px solid #3B82F6; border-radius: 0 8px 8px 0; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
+                            <p style="margin: 0; color: #1E293B; line-height: 1.7; font-size: 15px;">{p.replace(chr(10), "<br>")}</p>
+                        </div>
+                    '''
                 else:
-                    formatted_payload += f'<p style="margin-bottom: 20px; line-height: 1.6;">{p.replace(chr(10), "<br>")}</p>'
+                    # Renderizado de párrafo estándar con interlineado holgado
+                    formatted_payload += f'''
+                        <p style="margin-bottom: 24px; line-height: 1.8; color: #334155; font-size: 16px;">{p.replace(chr(10), "<br>")}</p>
+                    '''
 
         current_year = datetime.now().year
         
+        # Paleta de colores optimizada: Azul pizarra profundo (#0F172A), Blanco puro y Gris suave azulado (#F1F5F9)
         html_email_template = f"""
         <!DOCTYPE html>
         <html lang="es">
@@ -809,16 +831,15 @@ https://learninglabs.ai"""
             <style>
                 body {{
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                    background-color: #F3F4F6;
+                    background-color: #F1F5F9; /* Gris azulado muy suave para reducir contraste duro */
                     margin: 0;
                     padding: 0;
                     -webkit-font-smoothing: antialiased;
                     -moz-osx-font-smoothing: grayscale;
-                    color: #1E293B;
                 }}
                 .email-wrapper {{
                     width: 100%;
-                    background-color: #F3F4F6;
+                    background-color: #F1F5F9;
                     padding: 60px 0;
                 }}
                 .email-container {{
@@ -828,22 +849,16 @@ https://learninglabs.ai"""
                     border: 1px solid #E2E8F0;
                     border-radius: 16px;
                     overflow: hidden;
-                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+                    box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.05), 0 8px 10px -6px rgba(15, 23, 42, 0.01);
                 }}
                 .email-header {{
-                    background-color: #FFFFFF;
-                    padding: 35px 45px 25px 45px;
-                    border-bottom: 1px solid #F1F5F9;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                }}
-                .logo-container {{
-                    display: inline-block;
+                    background: linear-gradient(to right, #FFFFFF, #F8FAFC);
+                    padding: 40px 45px 30px 45px;
+                    border-bottom: 1px solid #E2E8F0;
                 }}
                 .logo-text {{
                     color: #0F172A;
-                    font-size: 24px;
+                    font-size: 26px;
                     font-weight: 900;
                     letter-spacing: -0.5px;
                     margin: 0;
@@ -854,19 +869,18 @@ https://learninglabs.ai"""
                 .tech-badge {{
                     display: inline-block;
                     background-color: #EFF6FF;
-                    color: #1D4ED8;
+                    color: #1E40AF;
                     font-size: 11px;
                     font-weight: 700;
                     text-transform: uppercase;
-                    letter-spacing: 1px;
-                    padding: 6px 12px;
+                    letter-spacing: 1.2px;
+                    padding: 6px 14px;
                     border-radius: 20px;
-                    margin-top: 10px;
+                    margin-top: 12px;
+                    border: 1px solid #DBEAFE;
                 }}
                 .email-body {{
                     padding: 45px;
-                    color: #334155;
-                    font-size: 16px;
                 }}
                 .email-footer {{
                     background-color: #F8FAFC;
@@ -875,7 +889,7 @@ https://learninglabs.ai"""
                 }}
                 .footer-content {{
                     color: #64748B;
-                    font-size: 12px;
+                    font-size: 13px;
                     line-height: 1.6;
                     margin: 0;
                 }}
@@ -888,7 +902,7 @@ https://learninglabs.ai"""
                 .footer-link {{
                     color: #2563EB;
                     text-decoration: none;
-                    font-weight: 500;
+                    font-weight: 600;
                 }}
                 @media only screen and (max-width: 680px) {{
                     .email-wrapper {{ padding: 0; }}
@@ -921,7 +935,7 @@ https://learninglabs.ai"""
                                         <span class="footer-brand">Learning Labs &copy; {current_year}</span>
                                         El Primer Sistema Operativo Educativo impulsado por IA.<br>
                                         <a href="https://learninglabs.ai" class="footer-link">www.learninglabs.ai</a><br><br>
-                                        <span style="font-size: 11px; color: #94A3B8;">
+                                        <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 15px; border-top: 1px solid #E2E8F0; padding-top: 15px;">
                                         Este comunicado se envía a directivos de la educación clasificados como líderes de innovación. Si usted no es el destinatario adecuado o desea declinar esta comunicación, por favor responda indicándolo.
                                         </span>
                                     </p>
@@ -936,17 +950,17 @@ https://learninglabs.ai"""
         """
 
         try:
-            # IGNICIÓN SMTP CON TEMPLATE PROFESIONAL
+            # 4. Ignición SMTP 
             send_mail(
                 subject=subject,
                 message=payload, # Fallback en texto plano
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[contact.email],
                 fail_silently=False,
-                html_message=html_email_template # Injectamos el Template de Alto Impacto
+                html_message=html_email_template
             )
 
-            # COMMIT A BASE DE DATOS CÓSMICA
+            # 5. Registro Histórico Forense (BD)
             Interaction.objects.create(
                 institution=inst,
                 contact=contact,
@@ -960,15 +974,21 @@ https://learninglabs.ai"""
             )
             
             return HttpResponse(f'''
-                <div class="mt-4 flex flex-col items-center justify-center p-6 border border-emerald-500/50 bg-gradient-to-t from-emerald-900/40 to-transparent rounded-xl shadow-lg">
-                    <span class="material-symbols-outlined text-5xl text-emerald-400 mb-2">mark_email_read</span>
-                    <span class="text-emerald-400 font-black text-lg uppercase tracking-[0.2em]">IMPACTO CONFIRMADO</span>
-                    <span class="text-emerald-300 font-mono mt-2 text-sm">Misil V.I.P entregado con estética corporativa a: {contact.email}</span>
+                <div class="mt-4 flex flex-col items-center justify-center p-8 bg-white border border-emerald-200 rounded-2xl shadow-xl transition-all">
+                    <div class="bg-emerald-50 text-emerald-500 p-4 rounded-full mb-4">
+                        <span class="material-symbols-outlined text-4xl">mark_email_read</span>
+                    </div>
+                    <span class="text-emerald-700 font-black text-xl uppercase tracking-widest mb-1">Impacto Confirmado</span>
+                    <span class="text-slate-500 font-sans mt-2 text-sm text-center">Mensaje ejecutivo desplegado exitosamente a:<br><strong class="text-slate-700">{contact.email}</strong></span>
                 </div>
             ''')
             
         except Exception as e:
-            return HttpResponse(f'<div class="text-red-400 p-4 bg-red-900/20 border border-red-500/50 rounded-xl mt-4 font-mono text-xs">❌ ERROR SMTP CÓSMICO: {str(e)}</div>')
+            return HttpResponse(f'''
+                <div class="text-red-700 p-6 bg-red-50 border border-red-200 rounded-xl mt-4 font-mono text-sm shadow-md">
+                    <strong>❌ ERROR SMTP CRÍTICO:</strong><br><br>{str(e)}
+                </div>
+            ''')
 
 
     # =====================================================================
@@ -991,6 +1011,7 @@ https://learninglabs.ai"""
                 institution = None
                 school_name = "su institución"
 
+            # Generación de contenido...
             if channel == 'EMAIL':
                 asunto = f"El fin del 70% de la carga operativa en el {school_name}"
                 cuerpo = f"""Estimado equipo directivo,
@@ -1034,49 +1055,60 @@ https://learninglabs.ai"""
                 subject = draft_data.get('email_subject', f'Contacto Learning Labs - {school_name}')
                 body = draft_data.get('email_body', draft_data.get('message', ''))
 
-            # Aseguramos el escape correcto para no romper el HTML
+            # Saneamiento de datos
             safe_subject = escape(subject)
             safe_body = escape(body)
 
-            # 🔥 INTERFAZ CLARA TIPO NOTION/APPLE MAIL 🔥
+            # =================================================================
+            # 🔥 INTERFAZ COMPOSER: COGNITIVE ERGONOMICS MODE 🔥
+            # Diseño basado en paleta Slate (Grises azulados) para máximo confort visual.
+            # Fondo claro/suave en los inputs para evitar la fatiga visual (Eye Strain)
+            # =================================================================
             html_response = f"""
-            <div id="ai-trap" class="p-8 bg-[#1e293b] border border-blue-500/20 rounded-2xl shadow-2xl mt-4 w-full">
-                <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
-                    <div class="flex items-center gap-3 text-white font-sans text-lg font-bold tracking-wide">
-                        <span class="material-symbols-outlined text-blue-400 text-2xl">edit_document</span>
+            <div id="ai-trap" class="p-8 bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-2xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.1)] mt-6 w-full font-sans transition-all duration-300">
+                
+                <div class="flex justify-between items-center mb-6 border-b border-slate-200 pb-5">
+                    <div class="flex items-center gap-3 text-slate-800 text-xl font-black tracking-tight">
+                        <div class="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                            <span class="material-symbols-outlined text-2xl">edit_document</span>
+                        </div>
                         Sovereign Composer
                     </div>
-                    <div class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        READY
+                    <div class="bg-blue-50 text-blue-600 border border-blue-200 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2 shadow-sm">
+                        <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                        Sistema Listo
                     </div>
                 </div>
                 
                 <form hx-post="/admin/sales/globalpipeline/omni-radar/send/{institution_id}/" 
                       hx-target="#ai-trap" 
                       hx-swap="innerHTML"
-                      class="w-full flex flex-col gap-5">
+                      class="w-full flex flex-col gap-6">
                     
                     <input type="hidden" name="channel" value="{channel}">
                     
                     <div class="flex flex-col gap-2">
-                        <label class="text-xs text-slate-400 font-sans font-bold tracking-wider uppercase ml-1">Asunto</label>
+                        <label class="text-xs text-slate-500 font-bold tracking-[0.1em] uppercase ml-1 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[14px]">title</span> Asunto Estratégico
+                        </label>
                         <input type="text" name="subject" value="{safe_subject}" required
-                               class="w-full bg-white text-slate-900 px-4 py-3.5 rounded-xl border-none font-sans font-semibold text-[16px] focus:outline-none focus:ring-4 focus:ring-blue-500/30 shadow-md transition-all placeholder:text-slate-400">
+                               class="w-full bg-white text-slate-800 px-5 py-4 rounded-xl border border-slate-200 font-bold text-[16px] focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 shadow-sm transition-all placeholder:text-slate-400">
                     </div>
                     
                     <div class="flex flex-col gap-2">
-                        <label class="text-xs text-slate-400 font-sans font-bold tracking-wider uppercase ml-1">Propuesta Ejecutiva</label>
+                        <label class="text-xs text-slate-500 font-bold tracking-[0.1em] uppercase ml-1 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[14px]">subject</span> Propuesta Ejecutiva
+                        </label>
                         <textarea name="payload" required
-                                  class="w-full bg-white text-[#1E293B] px-6 py-5 rounded-xl border-none font-sans text-[16px] leading-relaxed focus:outline-none focus:ring-4 focus:ring-blue-500/30 shadow-md transition-all" 
-                                  style="min-height: 550px;">{safe_body}</textarea>
+                                  class="w-full bg-[#F8FAFC] text-slate-700 px-6 py-6 rounded-xl border border-slate-200 font-sans text-[16px] leading-[1.8] focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 shadow-inner transition-all resize-y" 
+                                  style="min-height: 550px; font-weight: 400;">{safe_body}</textarea>
                     </div>
                     
                     <button type="submit" 
-                            onclick="this.innerHTML='<span class=\\'material-symbols-outlined animate-spin\\'>sync</span> ENVIANDO MISIL V.I.P...'; this.style.opacity='0.8'; this.style.transform='scale(0.98)';"
-                            class="w-full mt-4 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-sans font-bold text-[15px] uppercase tracking-[0.15em] px-8 py-5 rounded-xl shadow-[0_10px_25px_-5px_rgba(37,99,235,0.4)] hover:shadow-[0_20px_25px_-5px_rgba(37,99,235,0.4)] flex justify-center items-center gap-3 transition-all border border-blue-400/20">
+                            onclick="this.innerHTML='<span class=\\'material-symbols-outlined animate-spin\\'>sync</span> DESPLEGANDO MISIL...'; this.classList.add('opacity-90', 'scale-[0.99]');"
+                            class="w-full mt-4 bg-slate-900 hover:bg-blue-600 text-white font-bold text-[15px] uppercase tracking-[0.15em] px-8 py-5 rounded-xl shadow-[0_10px_20px_-5px_rgba(15,23,42,0.3)] hover:shadow-[0_15px_25px_-5px_rgba(37,99,235,0.4)] flex justify-center items-center gap-3 transition-all duration-300">
                         <span class="material-symbols-outlined text-xl">rocket_launch</span>
-                        EJECUTAR DESPLIEGUE
+                        Ejecutar Despliegue
                     </button>
                 </form>
             </div>
@@ -1084,7 +1116,7 @@ https://learninglabs.ai"""
             return HttpResponse(html_response)
 
         except Exception as e:
-            return HttpResponse(f"<div class='text-red-500 p-4 font-mono bg-red-950/30 border border-red-500/50 rounded-xl mt-4'>❌ ERROR CÓSMICO: {str(e)}</div>")
+            return HttpResponse(f"<div class='text-red-700 p-6 bg-red-50 border border-red-200 rounded-xl mt-4 font-mono shadow-md'>❌ ERROR CRÍTICO DE SISTEMA: {str(e)}</div>")
 
     @display(description="🎯 Comando de Combate | God Tier Omega")
     def advanced_recon_trigger(self, obj) -> str:
