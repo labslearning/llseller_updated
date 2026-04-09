@@ -357,6 +357,7 @@ class GlobalPipelineAdmin(ModelAdmin):
         }
 
 
+    
     @login_required
     @require_POST
     def htmx_send_omni_message(self, request, institution_id):
@@ -626,55 +627,464 @@ class GlobalPipelineAdmin(ModelAdmin):
 
     # [DENTRO DE GlobalPipelineAdmin en sales/admin.py]
 
+    # =====================================================================
+    # 🚀 [GOD TIER OMEGA]: OMNI-CHANNEL AI COMPOSER (HARD DOM INJECTION)
+    # =====================================================================
     def htmx_generate_smart_reply(self, request, institution_id):
-        from django.shortcuts import get_object_or_404
         from django.http import HttpResponse
-        from asgiref.sync import async_to_sync
-        from sales.models import Institution
-        from sales.engine.ai_omni_brain import ai_brain
-
-        inst = get_object_or_404(Institution.objects.select_related('forensic_profile'), id=institution_id)
-        canal = request.GET.get('channel', 'EMAIL')
+        from .models import Institution, DeepForensicProfile
+        from sales.engine.deepseek_sales_brain import QuantumSalesArchitect
+        from django.conf import settings
+        import json
         
-        # Lógica de Prompt (Nivel Sniper)
-        formato = {
-            'WHATSAPP': "WhatsApp persuasivo, corto, emojis tácticos.",
-            'SMS': "SMS directo, <160 chars, call to action.",
-            'EMAIL': "Email B2B formal, estructura de 3 párrafos."
-        }.get(canal, "Email B2B")
-
-        prompt = f"Actúa como SDR élite. Redacta {formato} para {inst.name}. Contexto: {inst.city}. Directo al grano."
+        channel = request.GET.get('channel', 'EMAIL').upper()
         
         try:
-            messages = [{"role": "system", "content": "Sovereign AI Engine V100"}, {"role": "user", "content": prompt}]
-            draft = async_to_sync(ai_brain._call_llm_with_resilience)(messages)
-            draft = draft.strip(' "') if draft else "Error en Inferencia."
-        except Exception as e:
-            draft = f"CRITICAL_AI_FAILURE: {str(e)}"
+            try:
+                institution = Institution.objects.get(id=institution_id)
+                school_name = institution.name
+            except Institution.DoesNotExist:
+                institution = None
+                school_name = "su institución"
 
-        # [GOD TIER RESPONSE]: Este fragmento reconstruye el editor con el texto inyectado
-        # Importante: No devolvemos el div #draft-container, devolvemos lo que va DENTRO.
-        return HttpResponse(f"""
-            <div class="absolute -top-4 left-8 px-4 bg-[#020205] text-[10px] font-black tracking-[0.5em] uppercase z-10 border-x border-purple-500/40 text-purple-400">
-                Payload Configuration Terminal
+            if channel == 'EMAIL':
+                asunto = f"El fin del 70% de la carga operativa en el {school_name}"
+                cuerpo = f"""Estimado equipo directivo,
+
+Como Director de Learning Labs, el diagnóstico que comparto con la alta gerencia es unánime: el modelo educativo tradicional colapsó. Hoy, la asfixia legal genera burnout docente; la ceguera de datos impide la personalización; las aulas ancladas en modelos teóricos obsoletos, la falta de herramientas analíticas y su uso estancan los resultado de las pruebas del Estado; y el uso descontrolado de la Inteligencia Artificial está erradicando el pensamiento crítico. Todo esto, sumado a una comunicación limitada e informal vía WhatsApp, termina fracturando irreparablemente la confianza y la percepción de valor de los padres de familia.
+
+Es matemáticamente imposible escalar la calidad pedagógica cuando el 70% del tiempo institucional se invierte en apagar crisis operativas.
+
+En Learning Labs hemos destruido este paradigma. No construimos un "LMS" más; hemos diseñado el Primer Gemelo Digital Institucional. Un Sistema Operativo Educativo integral que absorbe la complejidad, le devuelve a usted el control absoluto de su colegio y garantiza una educación hiper-personalizada a través de un modelo de IA aplicada en cinco capas arquitectónicas:
+
+⚖️ Erradicación del Riesgo Legal (Bóveda Forense): Los colegios viven a un error humano de enfrentar demandas por fallas en el debido proceso. Sistematizamos su colegio a "Cero Papel". Actas, observadores y citaciones se generan con huellas criptográficas inalterables, garantizando un blindaje total ante el MEN y la ISO 21001, todo articulado en estricta coherencia con su PEI, PIAR, SIEE y Manual de Convivencia.
+
+🧠 Neutralización del Fraude Cognitivo (Tutor Socrático IA): Los alumnos ya no piensan, solo copian. Nuestra Inteligencia Artificial, delimitada estrictamente por su reglamento institucional, no da respuestas. Aplica la Mayéutica para obligar a la corteza prefrontal del alumno a deducir la solución por sí mismo, forjando un pensamiento analítico real.
+
+👨‍🏫 Eliminación del 'Burnout' Docente (Autopsia Académica): Sus profesores se agotan llenando planillas. Nuestro motor analiza el código genético de cada calificación, detectando la falla milimétrica del alumno. Dotamos al cuerpo docente de un tutor pedagógico IA que automatiza rutas de rescate para estudiantes en riesgo y potencia a los sobresalientes. Además, entregamos tableros de estadística predictiva en tiempo real para que cada maestro conozca el estado exacto de sus alumnos, cursos y áreas, permitiéndoles tomar decisiones preventivas y volver a su verdadera pasión: enseñar.
+
+🚀 Proyección ICFES y Cognición Encarnada (Simuladores WebGL): La teoría abstracta aburre a la Generación Z. Los sumergimos en entornos 3D multilingües interactivos donde operan reactores químicos, motores físicos, simuladores matemáticos, de historia y más. Simultáneamente, transformamos la preparación ICFES/Saber en una "Misión Táctica" de alto rendimiento: simuladores inmersivos apoyados por un Tutor Socrático que detecta y corrige debilidades temáticas en tiempo real, elevando exponencialmente el posicionamiento nacional de su institución.
+
+🛡️ Gobernanza Comunicacional (Traductor de Empatía): La informalidad de WhatsApp y grupos de padres, adicionalmente los boletines numéricos fríos generan fugas de matrículas. Implementamos una Red Social Interna propia controlando el lenguaje y temas, como también alertas SMS automáticas de inasistencia, notas, fallas, observador, siempre existe una visibilidad del estado completo del alumno. Nuestra IA traduce las métricas de evaluación en "Guías de Apoyo Familiar", devolviendo la confianza a los padres y justificando el alto valor de su matrícula.
+
+En Learning Labs convertimos los datos institucionales en mejora para la educación, evolucionamos las clases de aula con simuladores pedagógicos, conectamos a todos los miembros institucionales en un solo canal.  
+
+Me gustaría agendar una sesión estratégica online de 20 minutos la próxima semana. Mi objetivo es trazarle el mapa arquitectónico de cómo vamos a automatizar su proceso más crítico y proyectar un Retorno de Inversión (ROI) masivo para su junta directiva.
+
+¿Tendrían disponibilidad el próximo martes o jueves por la mañana?
+
+Atentamente,
+
+Isaac Miller
+Director General | Learning Labs
+313-2533008
+https://learninglabs.ai"""
+                draft_data = {"email_subject": asunto, "email_body": cuerpo}
+            else:
+                profile = DeepForensicProfile.objects.filter(institution=institution).first() if institution else None
+                context = profile.ai_comprehensive_report if profile else "No data."
+                brain = QuantumSalesArchitect(api_key=settings.DEEPSEEK_API_KEY)
+                import asyncio
+                draft_data = asyncio.run(brain.generate_learning_labs_pitch(school_name=school_name, ai_school_report=context))
+
+            subject = draft_data.get('email_subject', f'Contacto Learning Labs - {school_name}')
+            body = draft_data.get('email_body', draft_data.get('message', ''))
+
+            safe_subject = json.dumps(subject)
+            safe_body = json.dumps(body)
+
+            # 🔥 HARD DOM INJECTION: Interfaz limpia con valores inyectados forzadamente
+            html_response = f"""
+            <div id="ai-trap" class="flex flex-col h-full fade-in relative group p-4 border border-blue-500/30 rounded-xl bg-blue-900/10">
+                <div class="flex items-center gap-2 text-blue-400 text-xs font-mono font-bold mb-4">
+                    <span class="material-symbols-outlined text-sm">rocket_launch</span>
+                    CARGA DE MUNICIÓN COMPLETADA
+                </div>
+                
+                <input type="hidden" name="channel" value="{channel}" id="hidden_channel_{institution_id}">
+                
+                <label class="text-xs text-blue-300 font-mono mb-1">ASUNTO:</label>
+                <input type="text" name="subject" value="" id="hard_subject_{institution_id}"
+                       class="bg-[#0f172a] border border-blue-900/50 text-white p-3 rounded-lg mb-4 font-mono text-sm focus:ring-2 focus:ring-blue-500/50 outline-none w-full shadow-inner"
+                       placeholder="Asunto...">
+                
+                <label class="text-xs text-blue-300 font-mono mb-1">PAYLOAD:</label>
+                <textarea name="payload" id="hard_payload_{institution_id}"
+                          class="flex-grow bg-[#0f172a] border border-blue-900/50 rounded-lg p-4 text-blue-100 font-mono text-[13px] leading-relaxed focus:ring-2 focus:ring-blue-500/50 outline-none resize-none shadow-inner" 
+                          style="min-height: 400px;"></textarea>
+                
+                <div class="mt-4 flex justify-end">
+                    <button type="button"
+                            onclick="
+                                const btn = this;
+                                btn.innerHTML = '<span class=\\'material-symbols-outlined animate-spin\\'>sync</span> DISPARANDO...';
+                                btn.classList.add('opacity-50', 'pointer-events-none');
+                                
+                                htmx.ajax('POST', '/admin/sales/globalpipeline/omni-radar/send/{institution_id}/', {{
+                                    target: '#ai-trap',
+                                    swap: 'innerHTML',
+                                    values: {{
+                                        channel: document.getElementById('hidden_channel_{institution_id}').value,
+                                        subject: document.getElementById('hard_subject_{institution_id}').value,
+                                        payload: document.getElementById('hard_payload_{institution_id}').value
+                                    }}
+                                }});
+                            "
+                            class="bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest px-8 py-4 rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-all flex items-center gap-3 active:scale-95 border border-blue-400/50">
+                        <span class="material-symbols-outlined text-xl">send</span>
+                        FIRE {channel}
+                    </button>
+                </div>
+                
+                <script>
+                    (function() {{
+                        // Forzamos la inyección directa en nuestros IDs únicos, ignorando Alpine
+                        document.getElementById('hard_subject_{institution_id}').value = {safe_subject};
+                        document.getElementById('hard_payload_{institution_id}').value = {safe_body};
+                    }})();
+                </script>
             </div>
+            """
+            return HttpResponse(html_response)
+
+        except Exception as e:
+            return HttpResponse(f"<div class='text-red-500 p-2 font-mono text-xs bg-red-950/30'>❌ ERROR CÓSMICO: {str(e)}</div>")
+
+    # =====================================================================
+    # 🚀 [GOD TIER OMEGA]: OMNI-CHANNEL AI COMPOSER & SENDER (HTMX)
+    # =====================================================================
+    
+    # =====================================================================
+    # 🚀 [GOD TIER OMEGA]: OMNI-CHANNEL SENDER (FIRE TARGET)
+    # =====================================================================
+    def htmx_send_omni_message(self, request, institution_id):
+        from django.shortcuts import get_object_or_404
+        from django.http import HttpResponse
+        from django.core.mail import send_mail
+        from django.conf import settings
+        from sales.models import Institution, Interaction
+        from datetime import datetime
+        import uuid
+
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return HttpResponse('<div class="text-red-500 bg-red-900/20 p-4 rounded border border-red-500/50">⛔ 403 Forbidden</div>', status=403)
+
+        inst = get_object_or_404(Institution, id=institution_id)
+        
+        # Recuperamos los datos del formulario HTMX puro
+        payload = request.POST.get('payload', '').strip()
+        subject = request.POST.get('subject', '').strip() or f"Optimizando operaciones en {inst.name}"
+        channel = request.POST.get('channel', 'EMAIL').strip().upper()
+        
+        if not payload:
+            return HttpResponse('<div class="text-red-400 p-4 bg-red-900/20 border border-red-500/50 rounded-xl mt-4 font-mono text-xs">❌ ABORTO: El payload está vacío. Escribe un mensaje antes de disparar.</div>')
+
+        contact = inst.contacts.filter(is_decision_maker=True).first() or inst.contacts.first()
+        
+        if not contact or not contact.email:
+            return HttpResponse('<div class="text-red-400 p-4 bg-red-900/20 border border-red-500/50 rounded-xl mt-4 font-mono text-xs">❌ ABORTO: No hay email registrado para este objetivo en el Vault.</div>')
+
+        thread_id = str(uuid.uuid4())
+
+        # 🔥 TEMPLATE HTML GOD-TIER (1 MILLION DOLLAR AESTHETIC) 🔥
+        # Convertimos saltos de línea en párrafos reales para una lectura fluida
+        paragraphs = payload.split('\n\n')
+        formatted_payload = ""
+        for p in paragraphs:
+            if p.strip():
+                # Detectar si el párrafo es un ítem de lista (ej: "⚖️ Erradicación...")
+                if any(p.strip().startswith(icon) for icon in ['⚖️', '🧠', '👨‍🏫', '🚀', '🛡️']):
+                    formatted_payload += f'<div style="margin-bottom: 20px; padding-left: 15px; border-left: 3px solid #3B82F6;">{p.replace(chr(10), "<br>")}</div>'
+                else:
+                    formatted_payload += f'<p style="margin-bottom: 20px; line-height: 1.6;">{p.replace(chr(10), "<br>")}</p>'
+
+        current_year = datetime.now().year
+        
+        html_email_template = f"""
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    background-color: #F3F4F6;
+                    margin: 0;
+                    padding: 0;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
+                    color: #1E293B;
+                }}
+                .email-wrapper {{
+                    width: 100%;
+                    background-color: #F3F4F6;
+                    padding: 60px 0;
+                }}
+                .email-container {{
+                    max-width: 680px;
+                    margin: 0 auto;
+                    background-color: #FFFFFF;
+                    border: 1px solid #E2E8F0;
+                    border-radius: 16px;
+                    overflow: hidden;
+                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+                }}
+                .email-header {{
+                    background-color: #FFFFFF;
+                    padding: 35px 45px 25px 45px;
+                    border-bottom: 1px solid #F1F5F9;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                }}
+                .logo-container {{
+                    display: inline-block;
+                }}
+                .logo-text {{
+                    color: #0F172A;
+                    font-size: 24px;
+                    font-weight: 900;
+                    letter-spacing: -0.5px;
+                    margin: 0;
+                }}
+                .logo-text span {{
+                    color: #2563EB;
+                }}
+                .tech-badge {{
+                    display: inline-block;
+                    background-color: #EFF6FF;
+                    color: #1D4ED8;
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    padding: 6px 12px;
+                    border-radius: 20px;
+                    margin-top: 10px;
+                }}
+                .email-body {{
+                    padding: 45px;
+                    color: #334155;
+                    font-size: 16px;
+                }}
+                .email-footer {{
+                    background-color: #F8FAFC;
+                    padding: 40px 45px;
+                    border-top: 1px solid #E2E8F0;
+                }}
+                .footer-content {{
+                    color: #64748B;
+                    font-size: 12px;
+                    line-height: 1.6;
+                    margin: 0;
+                }}
+                .footer-brand {{
+                    font-weight: 700;
+                    color: #0F172A;
+                    margin-bottom: 8px;
+                    display: block;
+                }}
+                .footer-link {{
+                    color: #2563EB;
+                    text-decoration: none;
+                    font-weight: 500;
+                }}
+                @media only screen and (max-width: 680px) {{
+                    .email-wrapper {{ padding: 0; }}
+                    .email-container {{ border-radius: 0; border: none; }}
+                    .email-header, .email-body, .email-footer {{ padding: 30px 25px; }}
+                }}
+            </style>
+        </head>
+        <body>
+            <table class="email-wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                    <td align="center">
+                        <table class="email-container" width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                            <tr>
+                                <td class="email-header">
+                                    <div class="logo-container">
+                                        <p class="logo-text">Learning<span>Labs</span></p>
+                                        <div class="tech-badge">LMS Avanzado + IA + Simuladores</div>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="email-body">
+                                    {formatted_payload}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="email-footer">
+                                    <p class="footer-content">
+                                        <span class="footer-brand">Learning Labs &copy; {current_year}</span>
+                                        El Primer Sistema Operativo Educativo impulsado por IA.<br>
+                                        <a href="https://learninglabs.ai" class="footer-link">www.learninglabs.ai</a><br><br>
+                                        <span style="font-size: 11px; color: #94A3B8;">
+                                        Este comunicado se envía a directivos de la educación clasificados como líderes de innovación. Si usted no es el destinatario adecuado o desea declinar esta comunicación, por favor responda indicándolo.
+                                        </span>
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+
+        try:
+            # IGNICIÓN SMTP CON TEMPLATE PROFESIONAL
+            send_mail(
+                subject=subject,
+                message=payload, # Fallback en texto plano
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[contact.email],
+                fail_silently=False,
+                html_message=html_email_template # Injectamos el Template de Alto Impacto
+            )
+
+            # COMMIT A BASE DE DATOS CÓSMICA
+            Interaction.objects.create(
+                institution=inst,
+                contact=contact,
+                channel=channel,
+                direction='OUT',
+                status='SENT',
+                subject=subject,
+                message_sent=payload,
+                thread_id=thread_id,
+                is_ai_generated=True
+            )
             
-            <div class="relative rounded-[2rem] overflow-hidden border-2 border-slate-800 focus-within:border-purple-500 transition-all shadow-[inset_0_0_40px_rgba(0,0,0,1)] bg-[#05050c]/80 backdrop-blur-2xl animate-in fade-in duration-500">
-                <div class="absolute top-0 left-0 w-12 h-full bg-black/40 border-r border-white/5 flex flex-col items-center pt-8 gap-1 font-mono text-[10px] text-slate-700 pointer-events-none">
-                    <span>01</span><span>02</span><span>03</span><span>04</span><span>05</span><span>06</span>
+            return HttpResponse(f'''
+                <div class="mt-4 flex flex-col items-center justify-center p-6 border border-emerald-500/50 bg-gradient-to-t from-emerald-900/40 to-transparent rounded-xl shadow-lg">
+                    <span class="material-symbols-outlined text-5xl text-emerald-400 mb-2">mark_email_read</span>
+                    <span class="text-emerald-400 font-black text-lg uppercase tracking-[0.2em]">IMPACTO CONFIRMADO</span>
+                    <span class="text-emerald-300 font-mono mt-2 text-sm">Misil V.I.P entregado con estética corporativa a: {contact.email}</span>
+                </div>
+            ''')
+            
+        except Exception as e:
+            return HttpResponse(f'<div class="text-red-400 p-4 bg-red-900/20 border border-red-500/50 rounded-xl mt-4 font-mono text-xs">❌ ERROR SMTP CÓSMICO: {str(e)}</div>')
+
+
+    # =====================================================================
+    # 🚀 [GOD TIER OMEGA]: COMPOSITOR DE EMAIL (NATIVE HTMX FORM)
+    # =====================================================================
+    def htmx_generate_smart_reply(self, request, institution_id):
+        from django.http import HttpResponse
+        from django.utils.html import escape
+        from .models import Institution, DeepForensicProfile
+        from sales.engine.deepseek_sales_brain import QuantumSalesArchitect
+        from django.conf import settings
+        
+        channel = request.GET.get('channel', 'EMAIL').upper()
+        
+        try:
+            try:
+                institution = Institution.objects.get(id=institution_id)
+                school_name = institution.name
+            except Institution.DoesNotExist:
+                institution = None
+                school_name = "su institución"
+
+            if channel == 'EMAIL':
+                asunto = f"El fin del 70% de la carga operativa en el {school_name}"
+                cuerpo = f"""Estimado equipo directivo,
+
+Como Director de Learning Labs, el diagnóstico que comparto con la alta gerencia es unánime: el modelo educativo tradicional colapsó. Hoy, la asfixia legal genera burnout docente; la ceguera de datos impide la personalización; las aulas ancladas en modelos teóricos obsoletos, la falta de herramientas analíticas y su uso estancan los resultado de las pruebas del Estado; y el uso descontrolado de la Inteligencia Artificial está erradicando el pensamiento crítico. Todo esto, sumado a una comunicación limitada e informal vía WhatsApp, termina fracturando irreparablemente la confianza y la percepción de valor de los padres de familia.
+
+Es matemáticamente imposible escalar la calidad pedagógica cuando el 70% del tiempo institucional se invierte en apagar crisis operativas.
+
+En Learning Labs hemos destruido este paradigma. No construimos un "LMS" más; hemos diseñado el Primer Gemelo Digital Institucional. Un Sistema Operativo Educativo integral que absorbe la complejidad, le devuelve a usted el control absoluto de su colegio y garantiza una educación hiper-personalizada a través de un modelo de IA aplicada en cinco capas arquitectónicas:
+
+⚖️ Erradicación del Riesgo Legal (Bóveda Forense): Los colegios viven a un error humano de enfrentar demandas por fallas en el debido proceso. Sistematizamos su colegio a "Cero Papel". Actas, observadores y citaciones se generan con huellas criptográficas inalterables, garantizando un blindaje total ante el MEN y la ISO 21001, todo articulado en estricta coherencia con su PEI, PIAR, SIEE y Manual de Convivencia.
+
+🧠 Neutralización del Fraude Cognitivo (Tutor Socrático IA): Los alumnos ya no piensan, solo copian. Nuestra Inteligencia Artificial, delimitada estrictamente por su reglamento institucional, no da respuestas. Aplica la Mayéutica para obligar a la corteza prefrontal del alumno a deducir la solución por sí mismo, forjando un pensamiento analítico real.
+
+👨‍🏫 Eliminación del 'Burnout' Docente (Autopsia Académica): Sus profesores se agotan llenando planillas. Nuestro motor analiza el código genético de cada calificación, detectando la falla milimétrica del alumno. Dotamos al cuerpo docente de un tutor pedagógico IA que automatiza rutas de rescate para estudiantes en riesgo y potencia a los sobresalientes. Además, entregamos tableros de estadística predictiva en tiempo real para que cada maestro conozca el estado exacto de sus alumnos, cursos y áreas, permitiéndoles tomar decisiones preventivas y volver a su verdadera pasión: enseñar.
+
+🚀 Proyección ICFES y Cognición Encarnada (Simuladores WebGL): La teoría abstracta aburre a la Generación Z. Los sumergimos en entornos 3D multilingües interactivos donde operan reactores químicos, motores físicos, simuladores matemáticos, de historia y más. Simultáneamente, transformamos la preparación ICFES/Saber en una "Misión Táctica" de alto rendimiento: simuladores inmersivos apoyados por un Tutor Socrático que detecta y corrige debilidades temáticas en tiempo real, elevando exponencialmente el posicionamiento nacional de su institución.
+
+🛡️ Gobernanza Comunicacional (Traductor de Empatía): La informalidad de WhatsApp y grupos de padres, adicionalmente los boletines numéricos fríos generan fugas de matrículas. Implementamos una Red Social Interna propia controlando el lenguaje y temas, como también alertas SMS automáticas de inasistencia, notas, fallas, observador, siempre existe una visibilidad del estado completo del alumno. Nuestra IA traduce las métricas de evaluación en "Guías de Apoyo Familiar", devolviendo la confianza a los padres y justificando el alto valor de su matrícula.
+
+En Learning Labs convertimos los datos institucionales en mejora para la educación, evolucionamos las clases de aula con simuladores pedagógicos, conectamos a todos los miembros institucionales en un solo canal.  
+
+Me gustaría agendar una sesión estratégica online de 20 minutos la próxima semana. Mi objetivo es trazarle el mapa arquitectónico de cómo vamos a automatizar su proceso más crítico y proyectar un Retorno de Inversión (ROI) masivo para su junta directiva.
+
+¿Tendrían disponibilidad el próximo martes o jueves por la mañana?
+
+Atentamente,
+
+Isaac Miller
+Director General | Learning Labs
+313-2533008
+https://learninglabs.ai"""
+                subject = asunto
+                body = cuerpo
+            else:
+                profile = DeepForensicProfile.objects.filter(institution=institution).first() if institution else None
+                context = profile.ai_comprehensive_report if profile else "No data."
+                brain = QuantumSalesArchitect(api_key=settings.DEEPSEEK_API_KEY)
+                import asyncio
+                draft_data = asyncio.run(brain.generate_learning_labs_pitch(school_name=school_name, ai_school_report=context))
+                subject = draft_data.get('email_subject', f'Contacto Learning Labs - {school_name}')
+                body = draft_data.get('email_body', draft_data.get('message', ''))
+
+            # Aseguramos el escape correcto para no romper el HTML
+            safe_subject = escape(subject)
+            safe_body = escape(body)
+
+            # 🔥 INTERFAZ CLARA TIPO NOTION/APPLE MAIL 🔥
+            html_response = f"""
+            <div id="ai-trap" class="p-8 bg-[#1e293b] border border-blue-500/20 rounded-2xl shadow-2xl mt-4 w-full">
+                <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+                    <div class="flex items-center gap-3 text-white font-sans text-lg font-bold tracking-wide">
+                        <span class="material-symbols-outlined text-blue-400 text-2xl">edit_document</span>
+                        Sovereign Composer
+                    </div>
+                    <div class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-mono font-bold flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        READY
+                    </div>
                 </div>
                 
-                <textarea id="message-box" 
-                          x-model="payload"
-                          @input="updatePayloadLength"
-                          :disabled="activeChannel !== null"
-                          class="w-full bg-transparent text-emerald-400 font-bold tracking-widest text-[16px] p-8 pl-16 pr-20 focus:ring-0 border-none transition-all font-mono resize-none custom-scrollbar min-h-[180px]">{draft}</textarea>
-                
-                <div class="absolute top-8 right-8 flex flex-col gap-4">
-                    <span class="material-symbols-outlined text-slate-800 text-4xl pointer-events-none transition-all duration-700 group-focus-within:text-purple-500/50">terminal</span>
-                </div>
+                <form hx-post="/admin/sales/globalpipeline/omni-radar/send/{institution_id}/" 
+                      hx-target="#ai-trap" 
+                      hx-swap="innerHTML"
+                      class="w-full flex flex-col gap-5">
+                    
+                    <input type="hidden" name="channel" value="{channel}">
+                    
+                    <div class="flex flex-col gap-2">
+                        <label class="text-xs text-slate-400 font-sans font-bold tracking-wider uppercase ml-1">Asunto</label>
+                        <input type="text" name="subject" value="{safe_subject}" required
+                               class="w-full bg-white text-slate-900 px-4 py-3.5 rounded-xl border-none font-sans font-semibold text-[16px] focus:outline-none focus:ring-4 focus:ring-blue-500/30 shadow-md transition-all placeholder:text-slate-400">
+                    </div>
+                    
+                    <div class="flex flex-col gap-2">
+                        <label class="text-xs text-slate-400 font-sans font-bold tracking-wider uppercase ml-1">Propuesta Ejecutiva</label>
+                        <textarea name="payload" required
+                                  class="w-full bg-white text-[#1E293B] px-6 py-5 rounded-xl border-none font-sans text-[16px] leading-relaxed focus:outline-none focus:ring-4 focus:ring-blue-500/30 shadow-md transition-all" 
+                                  style="min-height: 550px;">{safe_body}</textarea>
+                    </div>
+                    
+                    <button type="submit" 
+                            onclick="this.innerHTML='<span class=\\'material-symbols-outlined animate-spin\\'>sync</span> ENVIANDO MISIL V.I.P...'; this.style.opacity='0.8'; this.style.transform='scale(0.98)';"
+                            class="w-full mt-4 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-sans font-bold text-[15px] uppercase tracking-[0.15em] px-8 py-5 rounded-xl shadow-[0_10px_25px_-5px_rgba(37,99,235,0.4)] hover:shadow-[0_20px_25px_-5px_rgba(37,99,235,0.4)] flex justify-center items-center gap-3 transition-all border border-blue-400/20">
+                        <span class="material-symbols-outlined text-xl">rocket_launch</span>
+                        EJECUTAR DESPLIEGUE
+                    </button>
+                </form>
             </div>
-        """)
+            """
+            return HttpResponse(html_response)
+
+        except Exception as e:
+            return HttpResponse(f"<div class='text-red-500 p-4 font-mono bg-red-950/30 border border-red-500/50 rounded-xl mt-4'>❌ ERROR CÓSMICO: {str(e)}</div>")
 
     @display(description="🎯 Comando de Combate | God Tier Omega")
     def advanced_recon_trigger(self, obj) -> str:

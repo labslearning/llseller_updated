@@ -26,6 +26,9 @@ from urllib.parse import urlparse, unquote
 import imaplib
 from channels.layers import get_channel_layer
 from .models import Contact, DeepForensicProfile, OutreachSequence
+from smtplib import SMTPException
+from django.db import transaction, IntegrityError
+from django.core.mail import EmailMultiAlternatives
 
 #from sales.engine.deepseek_sales_brain import QuantumSalesArchitect, AIProviderError, AIValidationError
 from sales.engine.deepseek_sales_brain import QuantumSalesArchitect, AIRetryableError, AIFatalError, AIValidationError
@@ -37,6 +40,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from requests.exceptions import RequestException, HTTPError, Timeout, ConnectionError
+from celery.exceptions import MaxRetriesExceededError
 
 from django.core.cache import cache
 from django.db import transaction, DatabaseError, IntegrityError
@@ -65,7 +69,8 @@ from .engine.ai_omni_brain import OmniAIBrain  # Asegúrate de usar el nombre de
 from .engine.quantum_mail import QuantumMailServer 
 from .engine.waba_gateway import WABAGateway 
 
-logger = logging.getLogger("Sovereign.FSM")
+logger = logging.getLogger('LearningLabs.GhostSniper.Step1')
+#logger = logging.getLogger("Sovereign.FSM")
 # =========================================================
 # ⚙️ OMNI-TIER CONFIGURATION & TELEMETRY
 # =========================================================
@@ -971,50 +976,193 @@ def execute_quantum_outreach(self, contact_id: str):
         # Notificamos a Sentry/Datadog
         raise
 
-@shared_task(bind=True, max_retries=3)
+# Logger de nivel Enterprise
+logger = logging.getLogger('LearningLabs.GhostSniper.Step1')
+
+# ==============================================================================
+# 🛡️ [NIVEL DIOS]: GENERADOR DETERMINÍSTA DE PAYLOAD (ANTI-ALUCINACIÓN)
+# ==============================================================================
+def _generate_god_tier_payload(school_name: str) -> dict:
+    """
+    Genera el mensaje maestro de Learning Labs con 100% de precisión.
+    Inmune a la entropía de la IA. Diseño de Alto Impacto / Alta Conversión.
+    """
+    subject = f"El fin del 70% de la carga operativa en el {school_name}"
+    
+    # Versión en texto plano para clientes de correo sin HTML y filtros antispam
+    text_content = f"""Estimado equipo directivo,
+
+Como Director de Learning Labs, el diagnóstico que comparto con la alta gerencia es unánime: el modelo educativo tradicional colapsó. Hoy, la asfixia legal genera burnout docente; la ceguera de datos impide la personalización; las aulas ancladas en modelos teóricos obsoletos, la falta de herramientas analíticas y su uso estancan los resultado de las pruebas del Estado; y el uso descontrolado de la Inteligencia Artificial está erradicando el pensamiento crítico. Todo esto, sumado a una comunicación limitada e informal vía WhatsApp, termina fracturando irreparablemente la confianza y la percepción de valor de los padres de familia.
+
+Es matemáticamente imposible escalar la calidad pedagógica cuando el 70% del tiempo institucional se invierte en apagar crisis operativas.
+
+En Learning Labs hemos destruido este paradigma. No construimos un "LMS" más; hemos diseñado el Primer Gemelo Digital Institucional. Un Sistema Operativo Educativo integral que absorbe la complejidad, le devuelve a usted el control absoluto de su colegio y garantiza una educación hiper-personalizada a través de un modelo de IA aplicada en cinco capas arquitectónicas:
+
+⚖️ Erradicación del Riesgo Legal (Bóveda Forense)
+🧠 Neutralización del Fraude Cognitivo (Tutor Socrático IA)
+👨‍🏫 Eliminación del 'Burnout' Docente (Autopsia Académica)
+🚀 Proyección ICFES y Cognición Encarnada (Simuladores WebGL)
+🛡️ Gobernanza Comunicacional (Traductor de Empatía)
+
+En Learning Labs convertimos los datos institucionales en mejora para la educación, evolucionamos las clases de aula con simuladores pedagógicos, conectamos a todos los miembros institucionales en un solo canal.
+
+Me gustaría agendar una sesión estratégica online de 20 minutos la próxima semana. Mi objetivo es trazarle el mapa arquitectónico de cómo vamos a automatizar su proceso más crítico y proyectar un Retorno de Inversión (ROI) masivo para su junta directiva.
+
+¿Tendrían disponibilidad el próximo martes o jueves por la mañana?
+
+Atentamente,
+Isaac Miller
+Director General | Learning Labs
+313-2533008
+https://learninglabs.ai"""
+
+    # Versión HTML God-Tier (Diseño limpio, profesional y corporativo)
+    html_content = f"""
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #2d3748; line-height: 1.6; max-width: 650px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
+        <p>Estimado equipo directivo,</p>
+        
+        <p>Como Director de Learning Labs, el diagnóstico que comparto con la alta gerencia es unánime: <strong>el modelo educativo tradicional colapsó</strong>. Hoy, la asfixia legal genera burnout docente; la ceguera de datos impide la personalización; las aulas ancladas en modelos teóricos obsoletos y la falta de herramientas analíticas estancan los resultados de las pruebas del Estado; y el uso descontrolado de la Inteligencia Artificial está erradicando el pensamiento crítico. Todo esto, sumado a una comunicación limitada e informal vía WhatsApp, termina fracturando irreparablemente la confianza y la percepción de valor de los padres de familia.</p>
+        
+        <p style="font-size: 1.1em; color: #1a202c; border-left: 4px solid #3182ce; padding-left: 15px; margin: 25px 0;">
+            <em>Es matemáticamente imposible escalar la calidad pedagógica cuando el 70% del tiempo institucional se invierte en apagar crisis operativas.</em>
+        </p>
+
+        <p>En <strong>Learning Labs</strong> hemos destruido este paradigma. No construimos un "LMS" más; hemos diseñado el <strong>Primer Gemelo Digital Institucional</strong>. Un Sistema Operativo Educativo integral que absorbe la complejidad, le devuelve a usted el control absoluto de su colegio y garantiza una educación hiper-personalizada a través de un modelo de IA aplicada en cinco capas arquitectónicas:</p>
+
+        <ul style="list-style: none; padding-left: 0;">
+            <li style="margin-bottom: 15px;">⚖️ <strong>Erradicación del Riesgo Legal (Bóveda Forense):</strong> Sistematizamos su colegio a "Cero Papel". Actas, observadores y citaciones se generan con huellas criptográficas inalterables, garantizando un blindaje total ante el MEN y la ISO 21001, todo articulado con su PEI, PIAR, SIEE y Manual de Convivencia.</li>
+            <li style="margin-bottom: 15px;">🧠 <strong>Neutralización del Fraude Cognitivo (Tutor Socrático IA):</strong> Los alumnos ya no piensan, solo copian. Nuestra IA no da respuestas; aplica la Mayéutica para obligar a la corteza prefrontal del alumno a deducir la solución, forjando un pensamiento analítico real.</li>
+            <li style="margin-bottom: 15px;">👨‍🏫 <strong>Eliminación del 'Burnout' Docente (Autopsia Académica):</strong> Nuestro motor analiza el código genético de cada calificación. Dotamos al docente de un tutor IA que automatiza rutas de rescate para estudiantes en riesgo y entrega tableros de estadística predictiva en tiempo real.</li>
+            <li style="margin-bottom: 15px;">🚀 <strong>Proyección ICFES y Cognición Encarnada (Simuladores WebGL):</strong> Sumergimos a los alumnos en entornos 3D interactivos (reactores químicos, motores físicos). Transformamos la preparación Saber en una "Misión Táctica" de alto rendimiento.</li>
+            <li style="margin-bottom: 15px;">🛡️ <strong>Gobernanza Comunicacional (Traductor de Empatía):</strong> Implementamos una Red Social Interna propia y alertas SMS automáticas. Nuestra IA traduce las métricas en "Guías de Apoyo Familiar", devolviendo la confianza a los padres y justificando el valor de su matrícula.</li>
+        </ul>
+
+        <p style="background-color: #ebf8ff; padding: 15px; border-radius: 6px; color: #2b6cb0;">
+            En Learning Labs convertimos los datos institucionales en mejora para la educación, evolucionamos las clases de aula con simuladores pedagógicos y conectamos a todos los miembros institucionales en un solo canal.
+        </p>
+
+        <p>Me gustaría agendar una <strong>sesión estratégica online de 20 minutos</strong> la próxima semana. Mi objetivo es trazarle el mapa arquitectónico de cómo vamos a automatizar su proceso más crítico y proyectar un Retorno de Inversión (ROI) masivo para su junta directiva.</p>
+
+        <p><strong>¿Tendrían disponibilidad el próximo martes o jueves por la mañana?</strong></p>
+
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+        
+        <p style="font-size: 0.9em; color: #4a5568;">
+            Atentamente,<br><br>
+            <strong style="color: #1a202c; font-size: 1.1em;">Isaac Miller</strong><br>
+            Director General | Learning Labs<br>
+            📞 313-2533008<br>
+            🌐 <a href="https://learninglabs.ai" style="color: #3182ce; text-decoration: none;">https://learninglabs.ai</a>
+        </p>
+    </div>
+    """
+    
+    return {"subject": subject, "text": text_content, "html": html_content}
+
+# ==============================================================================
+# 🚀 [NIVEL DIOS]: CELERY TASK ORCHESTRATOR
+# ==============================================================================
+@shared_task(
+    bind=True, 
+    max_retries=5, 
+    autoretry_for=(SMTPException, ConnectionError, TimeoutError),
+    retry_backoff=True,        # Backoff Exponencial (1s, 2s, 4s, 8s...)
+    retry_backoff_max=3600,    # Max 1 hora entre reintentos
+    retry_jitter=True          # Previene el "Thundering Herd Problem"
+)
 def execute_step_1_email(self, contact_id):
     """
-    PASO 1: Disparo del Correo Maestro Inmune a Alucinaciones.
+    PASO 1: Despliegue de Impacto Inmune a Alucinaciones.
+    Arquitectura Transaccional / Failsafe Email Delivery.
     """
-    from .models import OutreachSequence # Importación local de seguridad
+    # Importaciones de seguridad dentro de la tarea para evitar dependencias circulares
+    from sales.models import Contact, OutreachSequence, DeepForensicProfile
+    from sales.engine.deepseek_sales_brain import QuantumSalesArchitect
     
+    logger.info(f"⚡ [INIT] Pipeline de Disparo Step-1 inicializado para Contact ID: {contact_id}")
+
     try:
-        # Buscamos el objetivo (UUID o ID)
-        target = Contact.objects.select_related('institution').get(id=contact_id)
-        profile = DeepForensicProfile.objects.get(institution=target.institution)
-        
-        # 1. Registro de Secuencia
-        sequence, created = OutreachSequence.objects.get_or_create(contact=target)
-        if sequence.status != 'PENDING':
-            return f"Saltado: {target.email} ya procesado."
+        # 1. BLOQUEO TRANSACCIONAL (ACID IDEMPOTENCY)
+        # Previene condiciones de carrera si dos workers procesan el mismo lead
+        with transaction.atomic():
+            
+            target = Contact.objects.select_related('institution').get(id=contact_id)
+            institution_name = target.institution.name if target.institution else "su institución"
+            
+            # Bloqueamos la secuencia a nivel de base de datos hasta que termine la tarea (Pessimistic Lock)
+            sequence, created = OutreachSequence.objects.select_for_update(skip_locked=True).get_or_create(contact=target)
+            
+            # Verificación de Idempotencia estricta
+            if not created and sequence.status not in ['PENDING', 'FAILED']:
+                msg = f"🛡️ [SKIPPED] El objetivo {target.email} ya está en la matriz (Status: {sequence.status})."
+                logger.warning(msg)
+                return msg
 
-        # 2. Cerebro Cuántico
-        from sales.engine.deepseek_sales_brain import QuantumSalesArchitect
-        brain = QuantumSalesArchitect(api_key=settings.DEEPSEEK_API_KEY)
-        
-        pitch = async_to_sync(brain.generate_learning_labs_pitch)(
-            school_name=target.institution.name,
-            ai_school_report=profile.ai_comprehensive_report
-        )
-        
-        # 3. Envío Real
-        send_mail(
-            subject=pitch['email_subject'],
-            message=pitch['thought_process'], # Respaldo en texto plano
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[target.email],
-            fail_silently=False,
-            html_message=pitch['email_body'] # <--- AQUÍ SE INYECTA EL HTML "GOD-TIER"
-        )
-        
-        # 4. Actualización de Memoria
-        sequence.status = 'EMAIL_SENT'
-        sequence.email_sent_at = timezone.now()
-        sequence.ai_thought_process_memory = pitch['thought_process']
-        sequence.save()
-        
-        return f"✅ Pitch enviado con éxito a {target.email}"
+            # 2. INYECCIÓN DETERMINISTA DE PAYLOAD (GOD-TIER TEMPLATE)
+            # Reemplazamos la "creatividad" de la IA por la perfección de ingeniería
+            payload = _generate_god_tier_payload(institution_name)
+            logger.info(f"🎯 Payload maestro generado para: {institution_name}")
 
+            # 3. TELEMETRÍA IA (ANÁLISIS EN SEGUNDO PLANO)
+            # La IA solo actúa como observador para nutrir el Dashboard, no toca el correo.
+            thought_process = "Análisis omitido por falta de datos forenses."
+            try:
+                profile = DeepForensicProfile.objects.get(institution=target.institution)
+                brain = QuantumSalesArchitect(api_key=settings.DEEPSEEK_API_KEY)
+                
+                # Ejecución aislada: Si la IA falla o da timeout, el correo SALE IGUAL.
+                ai_analysis = async_to_sync(brain.generate_learning_labs_pitch)(
+                    school_name=institution_name,
+                    ai_school_report=profile.ai_comprehensive_report or "Sin datos previos."
+                )
+                thought_process = ai_analysis.get('thought_process', 'Análisis exitoso, redacción delegada a capa determinista.')
+                logger.info(f"🧠 Análisis Cuántico completado para telemetría interna.")
+            
+            except DeepForensicProfile.DoesNotExist:
+                logger.warning(f"⚠️ Sin Perfil Forense para {institution_name}. Continuando con disparo en frío.")
+            except Exception as ai_error:
+                logger.error(f"⚠️ Falla no crítica en el motor de IA: {str(ai_error)}. Procediendo al envío primario.")
+
+            # 4. CAPA DE TRANSPORTE MULTI-VECTOR (SMTP)
+            msg = EmailMultiAlternatives(
+                subject=payload['subject'],
+                body=payload['text'], # Fallback texto puro
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[target.email],
+            )
+            msg.attach_alternative(payload['html'], "text/html") # Inyección HTML de Alto Impacto
+            
+            logger.info(f"🚀 [IGNICIÓN] Disparando SMTP hacia {target.email}...")
+            msg.send(fail_silently=False)
+
+            # 5. COMMIT DE MEMORIA ESTRATÉGICA
+            sequence.status = 'EMAIL_SENT'
+            sequence.email_sent_at = timezone.now()
+            sequence.ai_thought_process_memory = f"[DETERMINISTIC MODE ENFORCED]\n\n{thought_process}"
+            sequence.save()
+            
+            success_msg = f"✅ [SUCCESS] Misil GOD-TIER impactado en: {target.email}"
+            logger.info(success_msg)
+            return success_msg
+
+    except Contact.DoesNotExist:
+        error_msg = f"❌ [FATAL] Contacto {contact_id} ha desaparecido de la matrix."
+        logger.error(error_msg)
+        return error_msg
+        
+    except (SMTPException, ConnectionError, TimeoutError) as net_error:
+        logger.error(f"🔌 [RETRY] Falla de red/SMTP con {target.email}. Reintentando... Detalle: {str(net_error)}")
+        # Escala el error al motor de Celery para el Backoff Exponencial
+        raise self.retry(exc=net_error)
+        
     except Exception as e:
-        logger.error(f"Error en Step 1: {str(e)}")
+        logger.error(f"🔥 [SYSTEM FAILURE] Error crítico no controlado en Step 1: {str(e)}", exc_info=True)
+        # Marcamos la secuencia como fallida si es posible
+        try:
+            target = Contact.objects.get(id=contact_id)
+            seq = OutreachSequence.objects.get(contact=target)
+            seq.status = 'FAILED'
+            seq.save()
+        except:
+            pass
         raise e
