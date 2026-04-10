@@ -2077,3 +2077,47 @@ class SniperSearchView(View):
 
         results_html += "</div>"
         return HttpResponse(results_html)
+
+
+# ==============================================================================
+# [THE CRYSTAL CUBE: OMNI-TIMELINE RENDERER]
+# Renderiza el historial pasado para el SDR y prepara el WebSocket.
+# ==============================================================================
+from django.shortcuts import render
+from django.views.decorators.http import require_GET
+from django.apps import apps
+
+@require_GET
+def omni_timeline_view(request, entity_id):
+    """
+    [GOD TIER DATA FETCHING]
+    Carga el historial usando índices de base de datos.
+    """
+    Contact = apps.get_model('sales', 'Contact')
+    Institution = apps.get_model('sales', 'Institution')
+    Interaction = apps.get_model('sales', 'Interaction')
+
+    entity = None
+    entity_type = None
+    history = []
+    
+    try:
+        entity = Contact.objects.select_related('institution').get(id=entity_id)
+        entity_type = 'CONTACT'
+        history = Interaction.objects.filter(contact=entity).order_by('-created_at')[:50]
+    except Contact.DoesNotExist:
+        try:
+            entity = Institution.objects.get(id=entity_id)
+            entity_type = 'INSTITUTION'
+            history = Interaction.objects.filter(institution=entity).order_by('-created_at')[:50]
+        except Institution.DoesNotExist:
+            pass # Si no existe, renderizamos la plantilla en blanco con el ID
+    
+    context = {
+        'entity': entity,
+        'entity_id': entity_id,
+        'entity_type': entity_type,
+        'history': history,
+    }
+    
+    return render(request, 'admin/sales/omni_timeline.html', context)

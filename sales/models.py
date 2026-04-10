@@ -317,13 +317,23 @@ class Institution(TimeStampedModel):
             ),
         ]
 
-    @classmethod
-    def from_db(cls, db, field_names, values):
-        instance = super().from_db(db, field_names, values)
-        # Fix God Tier: Guardamos el estado original SIN causar llamadas recursivas
-        instance._original_name = instance.name
-        instance._original_city = instance.city
-        return instance
+    # ==============================================================================
+# [GOD TIER SRE]: NATIVE MEMORY DICT EXTRACTION
+# Previene RecursionError al evitar invocar los descriptores de propiedades
+# de Django (__get__) durante la instanciación O(1).
+# ==============================================================================
+@classmethod
+def from_db(cls, db, field_names, values):
+    # 1. Dejar que Django construya la instancia base
+    instance = super().from_db(db, field_names, values)
+    
+    # 2. Extraer datos LEYENDO EL DICCIONARIO NATIVO DE PYTHON (__dict__)
+    # Esto evita que Django intente hacer "refresh_from_db" si falta un campo diferido.
+    # Usamos .get() con None por si la query original usó .only() y omitió campos.
+    instance._original_name = instance.__dict__.get('name', None)
+    instance._original_city = instance.__dict__.get('city', None)
+    
+    return instance
 
     def save(self, *args, **kwargs):
         # Si la instancia no viene de la DB (es nueva), los _original_* no existirán

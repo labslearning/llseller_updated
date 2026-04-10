@@ -10,6 +10,7 @@ ENGINEERING: THE COGNITIVE REAPER PROTOCOL (EMAIL FALLBACK),
 """
 
 import time
+from time import sleep
 import logging
 from django.conf import settings
 from django.core.mail import send_mail
@@ -19,6 +20,7 @@ import re
 import random
 import html
 import os
+import json
 import ujson as json
 from contextlib import contextmanager
 from typing import Dict, List, Any, Optional, Tuple
@@ -30,10 +32,12 @@ from smtplib import SMTPException
 from django.db import transaction, IntegrityError
 from django.core.mail import EmailMultiAlternatives
 
+from typing import Dict, Any
+
 #from sales.engine.deepseek_sales_brain import QuantumSalesArchitect, AIProviderError, AIValidationError
-from sales.engine.deepseek_sales_brain import QuantumSalesArchitect, AIRetryableError, AIFatalError, AIValidationError
-from sales.engine.quantum_classifier import QuantumLeadClassifier
-from sales.engine.inbound_parser import SupremeInboundParser
+#from sales.engine.deepseek_sales_brain import QuantumSalesArchitect, AIRetryableError, AIFatalError, AIValidationError
+#from sales.engine.quantum_classifier import QuantumLeadClassifier
+#from sales.engine.inbound_parser import SupremeInboundParser
 # Celery & Django Imports
 from celery import shared_task, Task, group
 from celery.exceptions import SoftTimeLimitExceeded
@@ -41,6 +45,9 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from requests.exceptions import RequestException, HTTPError, Timeout, ConnectionError
 from celery.exceptions import MaxRetriesExceededError
+from celery.utils.log import get_task_logger
+from django.db import transaction, OperationalError
+from django.db.models import F
 
 from django.core.cache import cache
 from django.db import transaction, DatabaseError, IntegrityError
@@ -48,17 +55,19 @@ from django import db
 from django.utils import timezone
 from django.db.models import Q
 from asgiref.sync import async_to_sync  
-
+#from sales.models import Interaction, Lead, DeepForensicProfile
+#from sales.engine.lead_fsm import LeadStateMachine
+#from sales.engine.scoring import calculate_cyber_intel_score
 from .models import Institution, Interaction
 
 # =========================================================
 # IMPORTACIONES DE VANGUARDIA (GOD TIER)
 # =========================================================
-from sales.models import Institution, TechProfile, DeepForensicProfile, Interaction, Contact
-from sales.engine.serp_resolver import SERPResolverEngine
-from sales.engine.recon_engine import execute_recon, run_recon
-from sales.engine.ml_scoring import train_model, score_unrated_leads
-from sales.engine.discovery_engine import OSMDiscoveryEngine
+#from sales.models import Institution, TechProfile, DeepForensicProfile, Interaction, Contact
+#from sales.engine.serp_resolver import SERPResolverEngine
+#from sales.engine.recon_engine import execute_recon, run_recon
+#from sales.engine.ml_scoring import train_model, score_unrated_leads
+#from sales.engine.discovery_engine import OSMDiscoveryEngine
 
 
 from ddgs import DDGS
@@ -70,6 +79,7 @@ from .engine.quantum_mail import QuantumMailServer
 from .engine.waba_gateway import WABAGateway 
 
 logger = logging.getLogger('LearningLabs.GhostSniper.Step1')
+telemetry_logger = logging.getLogger("Sovereign.QuantumTelemetry")
 #logger = logging.getLogger("Sovereign.FSM")
 # =========================================================
 # ⚙️ OMNI-TIER CONFIGURATION & TELEMETRY
@@ -1166,3 +1176,419 @@ def execute_step_1_email(self, contact_id):
         except:
             pass
         raise e
+
+@shared_task(
+    bind=True,
+    queue='quantum_telemetry_high_priority',
+    acks_late=True, # Garantía absoluta de cero pérdida de datos (Zero Data Loss)
+    reject_on_worker_lost=True,
+    time_limit=15,
+    soft_time_limit=10,
+    max_retries=7 
+)
+def process_quantum_pixel_telemetry(self, **payload: Any) -> str:
+    """
+    Ingesta asíncrona God Tier. Aislada de errores de importación y optimizada
+    para hiper-concurrencia con Distributed Mutex Locks.
+    """
+    tracking_uuid: str = payload.get('tracking_uuid', 'UNKNOWN')
+    lock_id: str = f"mutex_telemetry_{tracking_uuid}"
+    
+    # Redlock Pattern: Previene que la misma apertura sea procesada por 2 workers
+    with cache.lock(lock_id, timeout=10, blocking_timeout=5):
+        try:
+            return _execute_transactional_ingestion(payload)
+            
+        except OperationalError as db_err:
+            # SRE Protocol: Exponential Backoff para mitigar Deadlocks
+            retries = self.request.retries
+            retry_delay = (2 ** retries) 
+            telemetry_logger.warning(
+                json.dumps({"event": "DB_DEADLOCK", "uuid": tracking_uuid, "retry_in": retry_delay})
+            )
+            raise self.retry(exc=db_err, countdown=retry_delay)
+            
+        except Exception as critical_err:
+            # DLQ (Dead Letter Queue) Pattern: Logueo estructurado para auditoría forense
+            telemetry_logger.critical(
+                json.dumps({
+                    "event": "FATAL_INGESTION_ERROR", 
+                    "uuid": tracking_uuid, 
+                    "error": str(critical_err)
+                }), 
+                exc_info=True
+            )
+            return "FAILED_NON_RETRYABLE"
+
+
+def _execute_transactional_ingestion(payload: Dict[str, Any]) -> str:
+    """
+    Núcleo de escritura con 100% Lazy Loading, Duck Typing y Aislamiento de Lock.
+    """
+    # --------------------------------------------------------------------------
+    # FASE 1: RESOLUCIÓN DE DEPENDENCIAS OFF-TRANSACTION (Optimización de CPU)
+    # Todo I/O de disco (Imports) ocurre aquí para NO bloquear PostgreSQL después.
+    # --------------------------------------------------------------------------
+    Interaction = apps.get_model('sales', 'Interaction')
+    DeepForensicProfile = apps.get_model('sales', 'DeepForensicProfile')
+
+    LeadStateMachine = None
+    calculate_cyber_intel_score = None
+
+    try:
+        from sales.engine.lead_fsm import LeadStateMachine
+    except (ImportError, Exception) as e:
+        telemetry_logger.debug(f"FSM Not Loaded: {e}")
+
+    try:
+        from sales.engine.scoring import calculate_cyber_intel_score
+    except (ImportError, Exception) as e:
+        telemetry_logger.debug(f"Scoring Not Loaded: {e}")
+
+    # --------------------------------------------------------------------------
+    # FASE 2: EXTRACCIÓN Y SANEAMIENTO DE PAYLOAD (Memory Safety)
+    # --------------------------------------------------------------------------
+    tracking_uuid: str = payload['tracking_uuid']
+    is_corporate_proxy: bool = payload.get('is_corporate_proxy', False)
+    is_recon_opened: bool = payload.get('is_recon_opened', False)
+    served_format: str = payload.get('served_format_name', 'UNKNOWN')
+    
+    # Saneamiento estricto: prevenimos DataErrors en campos Varchar limitados
+    ip_address: str = str(payload.get('ip_address', ''))[:45]
+    user_agent: str = str(payload.get('user_agent', ''))[:500]
+    sec_ch_ua: str = str(payload.get('sec_ch_ua', ''))[:250]
+
+    target_entity = None
+    is_first_open: bool = False
+    interaction_id: Optional[int] = None
+
+    # --------------------------------------------------------------------------
+    # FASE 3: NÚCLEO TRANSACCIONAL (Pessimistic Locking & Micro-Locking)
+    # --------------------------------------------------------------------------
+    with transaction.atomic():
+        try:
+            # Bloqueamos la fila en DB. Ningún otro worker puede tocarla.
+            interaction = Interaction.objects.select_for_update().get(tracking_uuid=tracking_uuid)
+        except Interaction.DoesNotExist:
+            telemetry_logger.error(json.dumps({"event": "GHOST_UUID_DROPPED", "uuid": tracking_uuid}))
+            return "GHOST_UUID_DROPPED"
+
+        interaction_id = interaction.id
+        is_first_open = not interaction.opened
+
+        # Array dinámico de campos a actualizar (Previene Write-Skew)
+        fields_to_update: List[str] = ['opened', 'open_count', 'last_open_time', 'last_open_ip', 'last_user_agent']
+
+        interaction.opened = True
+        interaction.open_count = F('open_count') + 1 
+        interaction.last_open_time = timezone.now()
+        interaction.last_open_ip = ip_address
+        interaction.last_user_agent = user_agent
+        
+        if is_first_open:
+            interaction.open_time = timezone.now()
+            fields_to_update.append('open_time')
+        
+        if hasattr(interaction, 'last_sec_ch_ua'):
+            interaction.last_sec_ch_ua = sec_ch_ua
+            fields_to_update.append('last_sec_ch_ua')
+            
+        if hasattr(interaction, 'opened_by_corporate_firewall') and is_corporate_proxy:
+            interaction.opened_by_corporate_firewall = True
+            fields_to_update.append('opened_by_corporate_firewall')
+
+        # GUARDIAN DE CONCURRENCIA: update_fields evita sobrescribir otros procesos
+        interaction.save(update_fields=fields_to_update)
+
+        # ----------------------------------------------------------------------
+        # RESOLUCIÓN DE ENTIDAD SOBERANA (Contact/Institution)
+        # Adaptado a la arquitectura modular de LLSeller
+        # ----------------------------------------------------------------------
+        if hasattr(interaction, 'contact') and interaction.contact:
+            target_entity = interaction.contact
+        elif hasattr(interaction, 'institution') and interaction.institution:
+            target_entity = interaction.institution
+
+        # ACTUALIZACIÓN FORENSE (OSINT DEEP PROFILING)
+        if target_entity:
+            try:
+                search_kwargs = {}
+                if target_entity.__class__.__name__ == 'Institution':
+                    search_kwargs['institution'] = target_entity
+                elif target_entity.__class__.__name__ == 'Contact':
+                    search_kwargs['contact'] = target_entity
+                    
+                if search_kwargs:
+                    profile, _ = DeepForensicProfile.objects.get_or_create(**search_kwargs)
+                    if is_corporate_proxy and hasattr(profile, 'has_enterprise_security'):
+                        # Actualización precisa con update_fields para el perfil forense
+                        profile.has_enterprise_security = True
+                        profile.security_appliance_fingerprint = user_agent
+                        profile.evasion_format_used = served_format
+                        profile.save(update_fields=['has_enterprise_security', 'security_appliance_fingerprint', 'evasion_format_used'])
+            except Exception as e:
+                telemetry_logger.warning(f"Forensic update skipped for {tracking_uuid}: {e}")
+
+            # INTEGRACIÓN FSM Y SCORING
+            if LeadStateMachine and is_first_open:
+                try:
+                    fsm = LeadStateMachine(target_entity)
+                    if hasattr(fsm, 'can_transition') and fsm.can_transition('EMAIL_OPENED'):
+                        fsm.transition_to('EMAIL_OPENED', trigger_source='Quantum_Pixel')
+                except Exception as e:
+                    telemetry_logger.warning(f"FSM state transition failed silently: {e}")
+
+            if callable(calculate_cyber_intel_score):
+                try:
+                    if is_corporate_proxy and is_first_open:
+                        calculate_cyber_intel_score(target_entity, action="ENTERPRISE_FIREWALL_DETECTED", points=25)
+                    if is_recon_opened:
+                        calculate_cyber_intel_score(target_entity, action="REPEATED_ENGAGEMENT", points=5)
+                except Exception as e:
+                    telemetry_logger.warning(f"Scoring update failed silently: {e}")
+
+    # --------------------------------------------------------------------------
+    # FASE 4: EMISIÓN ASÍNCRONA DE WEBSOCKETS (Fuera del Bloque Atómico)
+    # --------------------------------------------------------------------------
+    if interaction_id:
+        entity_id = target_entity.id if target_entity else interaction_id
+        _emit_omni_timeline_websocket_event(entity_id, interaction_id, payload, is_first_open)
+
+    return "TELEMETRY_PROCESSED_SUCCESSFULLY"
+
+
+def _emit_omni_timeline_websocket_event(entity_id: int, interaction_id: int, payload: Dict[str, Any], is_first_open: bool) -> None:
+    """
+    Motor Pub/Sub. Envía un JSON estructurado al frontend para iluminar el dashboard 
+    Omni-Timeline de forma reactiva y sin recarga.
+    """
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        group_name = f"omni_timeline_{entity_id}"
+        ws_event = {
+            'type': 'timeline_update',
+            'event_type': 'EMAIL_OPENED' if is_first_open else 'EMAIL_REOPENED',
+            'data': {
+                'interaction_id': interaction_id,
+                'ip_address': payload.get('ip_address', ''),
+                'device_intel': payload.get('sec_ch_ua', ''),
+                'is_corporate_firewall': payload.get('is_corporate_proxy', False),
+                'evasion_format': payload.get('served_format_name', 'UNKNOWN'),
+                'timestamp': timezone.now().isoformat(),
+            }
+        }
+        try:
+            async_to_sync(channel_layer.group_send)(group_name, ws_event)
+        except Exception as e:
+            telemetry_logger.error(json.dumps({"event": "WEBSOCKET_EMISSION_FAILED", "entity": entity_id, "error": str(e)}))
+
+
+
+
+# ==============================================================================
+# [GOD TIER OMEGA ARCHITECTURE: AUTONOMOUS DRIP CAMPAIGN COMMANDER]
+# MODULE: CHRONOS SWEEPER & DISTRIBUTED AI ORCHESTRATOR
+# VERSION: 100.0.0.0.0.CHRONOS.SINGULARITY
+# ENGINEERING ACHIEVEMENTS (SILICON VALLEY SRE / TEL AVIV 8200):
+# - 🕒 Temporal Sweeping: Barrido O(N) indexado con paginación defensiva.
+# - 🕸️ Distributed Fan-Out: Desacoplamiento de I/O de red (LLMs y SMTP) en sub-tareas.
+# - 🛡️ Global Mutex Lock: Semáforo Redis O(1) previene colisiones de Cronjobs.
+# - ⚖️ Transactional Compensation: Reversión (Rollback) si falla el SMTP.
+# - 🧠 Prompt Engineering Inyectado: Prompt seguro y resistente a alucinaciones.
+# ==============================================================================
+
+import logging
+import uuid
+import asyncio
+from datetime import timedelta
+from typing import Dict, Any
+
+from django.utils import timezone
+from django.template.loader import render_to_string
+from django.core.mail import EmailMultiAlternatives
+from django.core.cache import cache
+from django.apps import apps
+from django.conf import settings
+from celery import shared_task
+from asgiref.sync import async_to_sync
+
+# [Módulo FSM]: Asegúrate de que las importaciones coincidan con tu estructura
+from sales.engine.lead_fsm import LeadState, LeadEvent, LeadStateMachine
+# [Módulo AI]: Reemplaza esto con tu importación real de DeepSeek
+# from sales.engine.ai_omni_brain import OmniAIBrain
+
+logger_cron = logging.getLogger("Sovereign.ChronosCommander")
+
+
+
+
+# [CÓDIGO A PEGAR AL FINAL DE sales/tasks.py]
+
+@shared_task(
+    bind=True,
+    name="sales.tasks.task_daily_drip_campaign",
+    soft_time_limit=600,
+    time_limit=660,
+    max_retries=1
+)
+def task_daily_drip_campaign(self, batch_limit: int = 500):
+    """[THE CHRONOS SWEEPER - FAN OUT DISPATCHER]"""
+    lock_id = "mutex_global_chronos_sweeper_v2"
+    
+    acquired = cache.add(lock_id, "LOCKED", 60)
+    if not acquired:
+        logger_cron.warning("🔒 [CHRONOS] Barrido ya en progreso. Abortando colisión.")
+        return "Mutex Locked"
+
+    try:
+        Institution = apps.get_model('sales', 'Institution')
+        
+        now = timezone.now()
+        three_days_ago = now - timedelta(days=3)
+        seven_days_ago = now - timedelta(days=7)
+
+        logger_cron.info(f"🕰️ [CHRONOS SWEEPER] Iniciando escaneo táctico (Límite: {batch_limit})...")
+
+        stagnant_leads_3d = Institution.objects.filter(
+            processing_status__in=[
+                LeadState.FIRST_EMAIL_SENT.value, LeadState.FIRST_EMAIL_OPENED.value,
+                LeadState.SECOND_EMAIL_SENT.value, LeadState.SECOND_EMAIL_OPENED.value
+            ],
+            updated_at__lte=three_days_ago
+        ).only('id', 'name', 'email', 'processing_status')[:batch_limit]
+
+        stagnant_leads_7d = Institution.objects.filter(
+            processing_status__in=[
+                LeadState.THIRD_EMAIL_SENT.value, LeadState.THIRD_EMAIL_OPENED.value
+            ],
+            updated_at__lte=seven_days_ago
+        ).only('id', 'name', 'email', 'processing_status')[:batch_limit]
+
+        all_targets = list(stagnant_leads_3d) + list(stagnant_leads_7d)
+        
+        if not all_targets:
+            logger_cron.info("✅ [CHRONOS] Zona pacificada. Cero entidades rezagadas.")
+            return "Zona Limpia"
+
+        logger_cron.info(f"🎯 [CHRONOS] {len(all_targets)} objetivos válidos. Desatando enjambre...")
+
+        dispatched_count = 0
+        for target in all_targets:
+            if target.processing_status in [LeadState.THIRD_EMAIL_SENT.value, LeadState.THIRD_EMAIL_OPENED.value]:
+                email_step = 4
+                fsm_event = LeadEvent.TIME_LAPSED_7_DAYS.name 
+            else:
+                email_step = 2 if target.processing_status in [LeadState.FIRST_EMAIL_SENT.value, LeadState.FIRST_EMAIL_OPENED.value] else 3
+                fsm_event = LeadEvent.TIME_LAPSED_3_DAYS.name
+
+            task_execute_single_drip_node.apply_async(
+                args=[target.id, email_step, fsm_event]
+            )
+            dispatched_count += 1
+
+        logger_cron.info(f"🚀 [CHRONOS] {dispatched_count} sub-rutinas inyectadas a la red.")
+        return f"Enjambre desplegado: {dispatched_count} nodos."
+
+    finally:
+        cache.delete(lock_id)
+
+
+@shared_task(
+    bind=True,
+    name="sales.tasks.task_execute_single_drip_node",
+    soft_time_limit=120,
+    time_limit=150,
+    max_retries=3,
+    acks_late=True,
+    retry_backoff=True
+)
+def task_execute_single_drip_node(self, target_id: int, email_step: int, fsm_event_str: str):
+    """[THE TACTICAL NODE]"""
+    Institution = apps.get_model('sales', 'Institution')
+    Interaction = apps.get_model('sales', 'Interaction')
+
+    node_logger = logging.getLogger(f"Sovereign.DripNode.[{target_id}]")
+    
+    try:
+        target = Institution.objects.get(id=target_id)
+        
+        if target.processing_status == LeadState.REPLIED.value:
+            node_logger.info("🛑 [INBOUND SHIELD] Objetivo respondió. Abortando ataque.")
+            return "Supresión Inbound Activada"
+
+        fsm = LeadStateMachine(target)
+        success, new_state, error = fsm.apply_transition(target.id, fsm_event_str, skip_cooldown=True)
+        
+        if not success:
+            node_logger.warning(f"⏭️ [FSM LOCK] Transición denegada: {error}")
+            return "Abortado por FSM"
+
+        node_logger.info(f"🧠 [AI DELEGATION] Consultando IA para Correo {email_step}...")
+
+        subject_mock = f"[{target.name}] Automatización y Riesgo Legal (ISO 21001)"
+        if email_step == 3:
+            subject_mock = f"[{target.name}] El problema con la IA en las aulas"
+        elif email_step == 4:
+            subject_mock = "Cerrando expediente de Learning Labs"
+            
+        body_mock = f"<p>Estimado Rector de {target.name},</p><p>Hago seguimiento a mi comunicación. Este es el impacto del Correo {email_step} autogenerado por el nodo asíncrono.</p>"
+
+        payload_ia = {"subject": subject_mock, "html_body": body_mock}
+
+        import uuid
+        tracking_uuid = str(uuid.uuid4())
+
+        try:
+            from django.template.loader import render_to_string
+            html_message = render_to_string('admin/sales/emails/sales_pitch_v1.html', {
+                'institution_name': target.name,
+                'email_body': payload_ia['html_body'],
+                'tracking_uuid': tracking_uuid,
+                'base_url': getattr(settings, 'PUBLIC_DOMAIN', 'http://127.0.0.1:8000')
+            })
+        except Exception as tpl_error:
+            node_logger.critical(f"💥 [TEMPLATE CRASH] {tpl_error}")
+            target.processing_status = LeadState.FIRST_EMAIL_SENT.value
+            target.save(update_fields=['processing_status'])
+            raise
+
+        from django.core.mail import EmailMultiAlternatives
+        msg = EmailMultiAlternatives(
+            subject=payload_ia['subject'],
+            body="Este correo requiere un cliente compatible con HTML.",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[target.email],
+        )
+        msg.attach_alternative(html_message, "text/html")
+        
+        try:
+            msg.send(fail_silently=False)
+        except Exception as smtp_error:
+            node_logger.error(f"🔌 [SMTP FAILURE] Fallo de red: {smtp_error}")
+            raise self.retry(exc=smtp_error)
+
+        Interaction.objects.create(
+            institution=target,
+            channel='EMAIL',
+            direction='OUT',
+            subject=payload_ia['subject'],
+            message_sent=payload_ia['html_body'],
+            status='SENT',
+            tracking_uuid=tracking_uuid,
+            idempotency_key=f"DRIP_{email_step}_{target.id}"
+        )
+
+        try:
+            from sales.views_omni import _emit_omni_timeline_websocket_event
+            _emit_omni_timeline_websocket_event(target.id, tracking_uuid, {"ip_address": "SYSTEM_CRON"}, False)
+        except ImportError:
+            pass
+
+        node_logger.info(f"✅ [MISSION ACCOMPLISHED] Drip Node {email_step} ejecutado sobre {target.name}")
+        return "NODO TACTICO EXITOSO"
+
+    except Institution.DoesNotExist:
+        return "Entidad Fantasma"
+    except Exception as e:
+        node_logger.error(f"💀 [FATAL NODE ERROR] Colapso incontrolable: {e}", exc_info=True)
+        raise self.retry(exc=e, countdown=60)

@@ -732,7 +732,7 @@ class LeadStateMachine:
         
         with transaction.atomic():
             inst = Institution.objects.select_for_update(nowait=False).get(id=institution_id)
-            current_state = LeadState(inst.processing_status) if inst.processing_status else LeadState.NEW
+            current_state = LeadState(inst.lead_state) if inst.lead_state else LeadState.NEW
             
             if not skip_cooldown:
                 cooldown_key = f"fsm_cooldown_{institution_id}_{event.value}"
@@ -771,7 +771,7 @@ class LeadStateMachine:
             if not force:
                 self._apply_side_effects(institution_id, new_state, event, metadata)
             
-            inst.processing_status = new_state_value
+            inst.lead_state = new_state_value
             
             base_score = self._calculate_score_from_state(new_state, inst.lead_score)
             weight_modifier = transition.weight_modifier
@@ -785,7 +785,7 @@ class LeadStateMachine:
                 LeadState.REPLIED,
                 LeadState.MEETING_SCHEDULED
             ]
-            inst.save(update_fields=['processing_status', 'lead_score', 'contacted', 'updated_at'])
+            inst.save(update_fields=['lead_state', 'lead_score', 'contacted', 'updated_at'])
             
             latency_ms = (time.perf_counter() - start_time) * 1000
             trace_id = self._telemetry.record_transition(
@@ -807,7 +807,7 @@ class LeadStateMachine:
                 cooldown = min(transition.cooldown_seconds, self.config.max_cooldown)
                 cache.set(cooldown_key, cooldown, timeout=cooldown)
             
-            cache.delete(f"processing_status_{institution_id}")
+            cache.delete(f"lead_state_{institution_id}")
             cache.delete(f"lead_score_{institution_id}")
             
             logger.info(
@@ -882,7 +882,7 @@ class LeadStateMachine:
         try:
             from sales.models import Institution, LeadTraceLog
             inst = Institution.objects.get(id=institution_id)
-            current_state = LeadState(inst.processing_status) if inst.processing_status else LeadState.NEW
+            current_state = LeadState(inst.lead_state) if inst.lead_state else LeadState.NEW
             
             last_transition = LeadTraceLog.objects.filter(
                 institution=inst,
@@ -962,7 +962,7 @@ class LeadStateMachine:
             from sales.models import Institution
             states = {}
             for state in LeadState:
-                count = Institution.objects.filter(processing_status=state.value).count()
+                count = Institution.objects.filter(lead_state=state.value).count()
                 if count > 0:
                     states[state.name] = count
             return states
@@ -1022,10 +1022,10 @@ def fsm_audit(institution_id: str):
     try:
         from sales.models import Institution
         inst = Institution.objects.get(id=institution_id)
-        before_state = inst.processing_status
+        before_state = inst.lead_state
         yield
         inst.refresh_from_db()
-        after_state = inst.processing_status
+        after_state = inst.lead_state
         
         if before_state != after_state:
             logger.info(f"📝 [AUDIT] {institution_id}: {before_state} → {after_state}")
