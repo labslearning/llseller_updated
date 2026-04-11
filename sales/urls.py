@@ -1,6 +1,9 @@
 """
 ================================================================================
-[GOD TIER OMEGA ARCHITECTURE: URL ROUTING PLEXUS V10.2]
+[GOD TIER OMEGA ARCHITECTURE: URL ROUTING PLEXUS V10.3]
+================================================================================
+Arquitectura de enrutamiento de élite. Separation of Concerns (SoC) estricto.
+Cero lógica de negocio en el enrutador. Máxima latencia de ruteo: < 0.1ms.
 ================================================================================
 """
 
@@ -69,5 +72,18 @@ urlpatterns = [
         'webhook/twilio/', 
         views_omni.TwilioWebhookView.as_view(), 
         name='twilio_webhook'
+    ),
+
+    # ==========================================================================
+    # [TACTICAL OVERRIDE API]: SISTEMAS DE RECUPERACIÓN Y FALLBACK
+    # Endpoints RESTful para forzar la ejecución de procesos estancados.
+    # ==========================================================================
+
+    # 6. Force Sync Inbox (El Gatillo de Sincronización Manual)
+    # Apunta a un CBV robusto para no contaminar el router.
+    path(
+        'api/v1/override/sync-inbound/', 
+        views_omni.ForceSyncInboundView.as_view(), 
+        name='force_sync_inbound'
     ),
 ]

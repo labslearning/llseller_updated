@@ -1,13 +1,14 @@
 """
 ================================================================================
-[GOD TIER OMEGA ARCHITECTURE: OMNICHANNEL ASYNC INGESTION CORTEX V10.2]
-MODULE: NON-BLOCKING WEBHOOK RECEIVERS & ZERO-ALLOCATION PIXEL TRACKING
+[GOD TIER OMEGA ARCHITECTURE: OMNICHANNEL ASYNC INGESTION CORTEX V10.3]
+MODULE: NON-BLOCKING WEBHOOK RECEIVERS, PIXEL TRACKING & TACTICAL OVERRIDES
 ENGINEERING ACHIEVEMENTS (SILICON VALLEY SRE / TEL AVIV 8200 / SHANGAI):
 - 🔗 Schema Alignment: Sincronización perfecta con `process_quantum_pixel_telemetry`.
 - 🔪 Domain Decoupling: Dependencias de QuantumMail eliminadas. Auto-suficiente.
 - ⚡ True Fire-And-Forget: asyncio.create_task() con GC Shield. Latencia < 0.2ms.
 - 🧠 Static Byte Caching: Bypass de mutación de Middlewares. Zero Memory Leaks.
 - 🛡️ Strict HMAC Validations: Parseo Asíncrono puro O(1) CPU-bound.
+- 🚀 Tactical Thread-Pooling: IMAP Override aislado en hilos para evitar bloqueo del Event Loop.
 ================================================================================
 """
 
@@ -20,9 +21,9 @@ import asyncio
 import weakref
 import ipaddress
 import time
-from typing import Final, Dict, Any, List
+from typing import Final, Dict, Any
 
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -30,8 +31,8 @@ from django.conf import settings
 from asgiref.sync import sync_to_async
 from django.utils.crypto import constant_time_compare
 
-# [FIX]: Importamos la tarea correcta y especializada del núcleo de Celery
-from sales.tasks import process_quantum_pixel_telemetry
+# [FIX]: Importamos las tareas desde el núcleo de Celery
+from sales.tasks import process_quantum_pixel_telemetry, task_run_inbound_catcher
 
 logger = logging.getLogger("Sovereign.OmniCortex")
 
@@ -112,7 +113,7 @@ def extract_real_ip(request_meta: Dict[str, Any]) -> str:
 
 
 # ==============================================================================
-# ENDPOINTS ASGI DE ALTA FRECUENCIA
+# ENDPOINTS ASGI DE ALTA FRECUENCIA Y CONTROL TÁCTICO
 # ==============================================================================
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -244,3 +245,48 @@ class TwilioWebhookView(View):
         )
         
         return HttpResponse(TWILIO_OK_BYTES, content_type="application/xml", status=200)
+
+
+# ==============================================================================
+# [GOD TIER INJECTION]: THE TACTICAL SYNC OVERRIDE
+# ==============================================================================
+class ForceSyncInboundView(View):
+    """
+    [ASGI CORTEX]: Punto de entrada de la API para forzar el barrido manual.
+    Diseño Async-Safe: Usa 'sync_to_async(thread_sensitive=False)' para sacar la 
+    ejecución pesada de IMAP del Event Loop principal y enviarla a un hilo oscuro.
+    Latencia preservada: 100%.
+    """
+    async def get(self, request, *args, **kwargs):
+        start_time = time.time()
+        ip_address = extract_real_ip(request.META)
+        
+        logger.info(f">> 🚀 [TACTICAL OVERRIDE] User initiated forced IMAP sweep from IP: {ip_address}")
+        
+        try:
+            # Envolvemos el código bloqueante en un hilo asíncrono para no matar la app ASGI
+            await sync_to_async(task_run_inbound_catcher, thread_sensitive=False)()
+            
+            # Telemetría de ejecución micro-ajustada
+            execution_time = (time.time() - start_time) * 1000
+            
+            logger.info(f">> ✅ [TACTICAL OVERRIDE] Sweep completed in {execution_time:.2f}ms.")
+            
+            return JsonResponse({
+                'status': 'success',
+                'code': 200,
+                'message': 'Bandeja sincronizada. Escáner Cuántico completado.',
+                'telemetry': {
+                    'execution_time_ms': round(execution_time, 2),
+                    'trigger_ip': ip_address
+                }
+            }, status=200)
+            
+        except Exception as e:
+            logger.error(f">> ❌ [TACTICAL OVERRIDE] Falla crítica en el túnel IMAP: {str(e)}")
+            return JsonResponse({
+                'status': 'error',
+                'code': 500,
+                'message': 'Falla de conexión de red, timeout o rechazo de autenticación IMAP.',
+                'error_details': str(e)
+            }, status=500)

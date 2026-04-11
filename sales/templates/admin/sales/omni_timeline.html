@@ -38,6 +38,7 @@
                         'crt-flicker': 'crtFlicker 0.12s infinite',
                         'shimmer-slide': 'shimmer 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite',
                         'pulse-fast': 'pulseFast 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'shimmer': 'shimmer 2s infinite',
                     },
                     keyframes: {
                         crtFlicker: {
@@ -231,7 +232,20 @@
         </div>
         
         <div class="flex gap-3 bg-black/80 p-2.5 rounded-2xl border border-white/10 shadow-[inset_0_0_20px_rgba(0,0,0,0.9)] gpu-accel">
+            
             <button 
+                @click="forceQuantumSync()"
+                :disabled="isRadarScanning"
+                class="group relative bg-[#1a0b2e] hover:bg-purple-900/40 text-purple-50 px-5 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border border-purple-500/30 flex items-center gap-3 shadow-[0_0_15px_rgba(168,85,247,0.15)] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-purple-500/20 to-purple-500/0 translate-x-[-100%] group-hover:animate-shimmer pointer-events-none"></div>
+                <span class="material-symbols-outlined text-[18px] text-neon-purple transition-transform"
+                      :class="{'animate-spin': isRadarScanning, 'group-hover:rotate-180': !isRadarScanning}">
+                    sync
+                </span>
+                <span class="drop-shadow-md relative z-10" x-text="isRadarScanning ? 'ESCANENANDO...' : 'SYNC RADAR'"></span>
+            </button>
+
+            <div class="w-[1px] h-8 bg-white/10 mx-1 self-center"></div> <button 
                 hx-post="/admin/sales/globalpipeline/omni-radar/ai-compose/{{ institution.id }}/?channel=EMAIL" 
                 hx-target="#ai-trap" 
                 hx-swap="innerHTML"
@@ -581,6 +595,9 @@
             isDecoding: false,
             decoderText: '',
             isTyping: false,
+            
+            // [GOD TIER INJECTION] System Override State
+            isRadarScanning: false,
 
             init() {
                 console.log("%c[APEX LEVIATHAN v4.0] Kernel Booting...", "color: #10b981; font-weight: 900; font-size: 16px; background: #000; padding: 4px; border-radius: 4px;");
@@ -594,6 +611,45 @@
             // --- AUDIO WRAPPER --- //
             playTacticalSound(type) {
                 try { AudioEngine.play(type); } catch(e) {} // Fallback for strict browser policies
+            },
+
+            // --- [GOD TIER INJECTION: TACTICAL OVERRIDE SYSTEM] --- //
+            async forceQuantumSync() {
+                if (this.isRadarScanning) return;
+
+                this.playTacticalSound('blip');
+                this.isRadarScanning = true;
+                this.notify('info', '[RADAR OVERRIDE]: Iniciando barrido síncrono de matriz IMAP...', 'radar');
+
+                try {
+                    const response = await fetch('/sales/api/v1/override/sync-inbound/', {
+                        method: 'GET',
+                        headers: {
+                            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+                        }
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        this.notify('success', `[MATCH CONFIRMADO]: Radar sincronizado en ${data.telemetry?.execution_time_ms || 0}ms. Recalibrando UI...`, 'satellite_alt');
+                        this.playTacticalSound('type');
+
+                        // Recarga táctica para reflejar datos
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1800);
+                    } else {
+                        throw new Error(data.error_details || data.message || 'Falla de sincronización IMAP.');
+                    }
+                } catch (error) {
+                    console.error('[OMNI RADAR ERROR]:', error);
+                    this.notify('error', `[ANOMALÍA EN RADAR]: Módulo fuera de alcance.`, 'warning');
+                    this.playTacticalSound('error');
+                    this.isRadarScanning = false;
+                }
             },
 
             // --- CORE LOGIC --- //
