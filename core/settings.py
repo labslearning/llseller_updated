@@ -216,7 +216,7 @@ CELERY_BEAT_SCHEDULE = {
     # 🔥 [HIGH-FREQUENCY RADAR]: Sincronización cada 30 segundos exactos
     'poll_inbox_high_frequency_sweep': {
         'task': 'sales.tasks.task_run_inbound_catcher',
-        'schedule': 30.0, 
+        'schedule': 60.0, 
     },
     'daily_intelligence_scoring': {
         'task': 'sales.tasks.task_batch_score_leads',
