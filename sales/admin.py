@@ -263,6 +263,39 @@ try:
 except admin.sites.NotRegistered:
     pass
 
+# ==============================================================================
+# [CORE DATABANK] INSTITUTION REGISTRY (RESTAURACIÓN DE ENRUTADOR)
+# ==============================================================================
+@admin.register(Institution)
+class InstitutionAdmin(ModelAdmin):
+    """
+    Panel de control base para la manipulación atómica de los registros.
+    Al estar registrado, restaura todas las URLs /admin/sales/institution/...
+    evitando los errores 404 de los ForeignKeys.
+    """
+    list_display = (
+        'name', 
+        'get_domain_badge', 
+        'processing_status', 
+        'created_at'
+    )
+    search_fields = ('name', 'website', 'email')
+    list_filter = ('processing_status', 'created_at')
+    ordering = ('-created_at',)
+    
+    # Interfaz limpia y estética para el panel base
+    @display(description='Dominio Corporativo')
+    def get_domain_badge(self, obj):
+        if obj.website:
+            clean_url = obj.website.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
+            return format_html(
+                '<div class="flex items-center gap-1.5 w-fit px-2 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 font-mono text-xs shadow-sm">'
+                '  <span class="material-symbols-outlined text-[12px]">public</span> {}'
+                '</div>', clean_url
+            )
+        return format_html('<span class="text-slate-400 text-xs italic">Sin Dominio</span>')
+
+
 @admin.register(GlobalPipeline)
 class GlobalPipelineAdmin(ModelAdmin):
     """

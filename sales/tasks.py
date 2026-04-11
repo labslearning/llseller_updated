@@ -607,129 +607,189 @@ def task_batch_score_leads(self, limit: int = 2000):
             return "Inferencia complete."
         except Exception as e: raise self.retry(exc=e)
 
-# =========================================================
-# 📡 MISIÓN 6: INBOUND RADAR (QUANTUM CATCHER)
-# =========================================================
-@shared_task(
-    bind=True, 
-    base=SovereignBaseTask, 
-    name="sales.tasks.task_run_inbound_catcher",
-    soft_time_limit=300,
-    time_limit=360
+import logging
+import time
+from celery import shared_task
+from django.conf import settings
+from django.db import transaction
+from django.core.mail import EmailMessage
+
+from sales.models import (
+    Institution, Contact, Interaction, 
+    ChannelType, DirectionType, InteractionStatus
 )
-def task_run_inbound_catcher(self):
+
+# Inteligencia de Reconocimiento
+from sales.engine.recon_engine import execute_recon
+from sales.engine.serp_resolver import SERPResolverEngine
+from sales.engine.osm_engine import execute_radar_mission
+
+# Inteligencia Cognitiva
+from sales.services.ai_service import SovereignAI
+from sales.services.inbound_service import OmniCatcher
+
+logger = logging.getLogger('Sovereign.TaskEngine')
+
+# ==============================================================================
+# 🛰️ MÓDULO 1: RECONOCIMIENTO Y GHOST SNIPER
+# ==============================================================================
+
+@shared_task(name='sales.tasks.task_run_single_recon', bind=True, max_retries=3)
+def task_run_single_recon(self, institution_id: str):
+    logger.info(f"🛰️ [GHOST SNIPER] Desplegando unidad contra objetivo: {institution_id}")
+    try:
+        results = execute_recon(institution_id)
+        return f"Misión completada. Estado Final: {results.get('status')}"
+    except Exception as e:
+        logger.error(f"💀 Fallo crítico en Misión Sniper: {e}", exc_info=True)
+        raise self.retry(exc=e, countdown=60)
+
+@shared_task(name='sales.tasks.task_run_ghost_sniper_fleet')
+def task_run_ghost_sniper_fleet(limit: int = 50, city: str = ''):
+    logger.info(f"🛸 [SWARM] Iniciando escaneo masivo (Límite: {limit})...")
+    # Lógica de orquestación masiva delegada al engine
+    pass
+
+@shared_task(name='sales.tasks.task_run_osm_radar')
+def task_run_osm_radar(country: str, city: str, mission_id: str, limit: int = 500, extreme_mode: bool = False):
+    logger.info(f"📡 [GEO-RADAR] Desplegado en {city}, {country} (Misión: {mission_id})")
+    execute_radar_mission(country, city, limit, mission_id, extreme_mode)
+    return "Barrido Geo-Espacial Finalizado"
+
+@shared_task(name='sales.tasks.task_run_serp_resolver')
+def task_run_serp_resolver(limit: int = 50):
+    logger.info(f"🔍 [SERP] Iniciando resolución de dominios en la web profunda...")
+    resolver = SERPResolverEngine(concurrency_limit=5)
+    resolver.resolve_missing_urls(limit=limit)
+    return "Resolución SERP Finalizada"
+
+
+# ==============================================================================
+# 💬 MÓDULO 2: GATILLO DEL RADAR (INBOUND CATCHER HIGH-FREQUENCY)
+# ==============================================================================
+
+@shared_task(name='sales.tasks.task_run_inbound_catcher')
+def task_run_inbound_catcher():
     """
-    [QUANTUM RADAR]: Escáner IMAP con protección Mutex.
-    Asimila correos, sanitiza HTML corporativo y clasifica vía DeepSeek Singularity.
+    Trigger automático invocado por Celery Beat cada 30 segundos.
+    Instancia el OmniCatcher y ejecuta el barrido cuántico (run_sweep).
     """
-    IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
-    IMAP_USER = os.getenv("IMAP_USER")
-    IMAP_PASSWORD = os.getenv("IMAP_PASSWORD")
+    logger.info("🕒 [CRON] Ejecutando barrido programado del OmniCatcher V15...")
+    try:
+        catcher = OmniCatcher()
+        catcher.run_sweep()
+        return "Sweep Initiated."
+    except Exception as e:
+        logger.error(f"💀 [CRON FAILURE] Fallo al iniciar el OmniCatcher: {e}", exc_info=True)
+        return str(e)
 
-    if not IMAP_USER or not IMAP_PASSWORD:
-        logger.error("❌ [FATAL] Credenciales IMAP no detectadas en variables de entorno.")
-        return "Missing IMAP Credentials. Aborted."
 
-    # 🛡️ OMNI-TIER MUTEX: Evita que 2 workers lean la bandeja a la vez
-    lock_id = "mutex_inbound_radar_scan"
-    with distributed_lock(lock_id, timeout=240, blocking=False) as acquired:
-        if not acquired:
-            logger.info("🔒 [INBOUND RADAR] Escaneo en curso por otro nodo. Abortando colisión.")
-            return "Radar Locked by another Node."
+# ==============================================================================
+# 🚀 MÓDULO 3: APEX RESPONSE ENGINE (OUTBOUND AUTÓNOMO)
+# ==============================================================================
 
-        logger.info("📡 [INBOUND RADAR] Iniciando barrido táctico IMAP...")
+@shared_task(
+    bind=True,
+    name='sales.tasks.task_process_inbound_and_reply',
+    max_retries=3,
+    acks_late=True,
+    reject_on_worker_lost=True
+)
+def task_process_inbound_and_reply(self, institution_id: str):
+    """
+    [GOD TIER LEVEL] Apex Response Engine V15
+    Arquitectura atómica, idempotente, resistente a fallos SMTP y con memoria contextual dinámica.
+    """
+    t_start = time.perf_counter()
+    logger.info(f"⚡ [APEX IGNITION] Secuencia de contraataque iniciada. Target ID: {institution_id}")
+    
+    try:
+        # FASE 1: ATOMIC LOCK & RETRIEVAL
+        with transaction.atomic():
+            institution = Institution.objects.select_for_update().get(id=institution_id)
+            
+            incoming = Interaction.objects.filter(
+                institution=institution,
+                channel=ChannelType.EMAIL,
+                direction=DirectionType.INBOUND
+            ).select_related('contact').order_by('-created_at').first()
+            
+            if not incoming:
+                logger.warning(f"⚠️ [ABORT] No se detectó Interaction INBOUND para {institution_id}")
+                return "Operation Skipped: No Inbound"
 
-        try:
-            with imaplib.IMAP4_SSL(IMAP_SERVER) as mail:
-                mail.login(IMAP_USER, IMAP_PASSWORD)
-                mail.select("inbox")
+            target_contact = incoming.contact
+            target_email = target_contact.email
+            target_name = target_contact.name or institution.name
 
-                status, messages = mail.search(None, "UNSEEN")
-                if status != "OK":
-                    return "No new messages."
+            # FASE 2: BARRERA DE IDEMPOTENCIA
+            already_replied = Interaction.objects.filter(
+                institution=institution,
+                direction=DirectionType.OUTBOUND,
+                created_at__gt=incoming.created_at
+            ).exists()
+            
+            if already_replied:
+                logger.warning(f"🛡️ [IDEMPOTENCY SHIELD] Respuesta ya enviada post-recepción para {target_email}.")
+                return "Operation Skipped: Already Replied"
 
-                email_ids = messages[0].split()
-                if not email_ids:
-                    logger.info("📭 Radar limpio. Sin respuestas nuevas.")
-                    return "Inbox Zero."
+        # FASE 3: EXTRACCIÓN DE MEMORIA CONTEXTUAL
+        last_outbound = Interaction.objects.filter(
+            institution=institution,
+            direction=DirectionType.OUTBOUND,
+            created_at__lt=incoming.created_at
+        ).order_by('-created_at').first()
+        
+        previous_context = last_outbound.content if last_outbound else "[INICIACIÓN B2B: Prospecto contactó de forma proactiva. Presentar Learning Labs.]"
 
-                logger.info(f"🚨 [CONTACTO DETECTADO] {len(email_ids)} nuevos mensajes.")
-                
-                channel_layer = get_channel_layer()
-                classifier = QuantumLeadClassifier()
+        # FASE 4: INFERENCIA OMEGA (DeepSeek Cognitive Core)
+        logger.info(f"🧠 [COGNITIVE ROUTING] Sintetizando contraataque para: {target_email}...")
+        ai_brain = SovereignAI()
+        ai_reply_text = ai_brain.generate_counter_attack(
+            target_name=target_name,
+            previous_email_content=previous_context,
+            incoming_reply=incoming.content
+        )
 
-                for e_id in email_ids:
-                    res, msg_data = mail.fetch(e_id, "(RFC822)")
-                    raw_email = msg_data[0][1]
+        # FASE 5: WEAPONIZED SMTP PAYLOAD
+        subject = incoming.subject if incoming.subject.lower().startswith("re:") else f"Re: {incoming.subject}"
+        
+        email_msg = EmailMessage(
+            subject=subject,
+            body=ai_reply_text,
+            from_email=f"Miller Ospina | Learning Labs <{settings.EMAIL_HOST_USER}>",
+            to=[target_email],
+            headers={
+                'In-Reply-To': incoming.thread_id,
+                'References': incoming.thread_id
+            }
+        )
+        
+        logger.info(f"🚀 [FIRING MISSILE] Transmitiendo payload SMTP hacia {target_email}...")
+        email_msg.send(fail_silently=False)
 
-                    # 1. Extracción Heurística Nivel Omega
-                    payload = SupremeInboundParser.extract_clean_reply(raw_email)
-                    if not payload:
-                        continue # Payload vacío o malicioso, saltar
+        # FASE 6: PERSISTENCIA ATÓMICA DE ESTADO
+        with transaction.atomic():
+            Interaction.objects.create(
+                institution=institution,
+                contact=target_contact,
+                channel=ChannelType.EMAIL,
+                direction=DirectionType.OUTBOUND,
+                status=InteractionStatus.SENT,
+                subject=subject,
+                content=ai_reply_text,
+                thread_id=incoming.thread_id
+            )
+            institution.processing_status = 'REPLIED'
+            institution.save(update_fields=['processing_status'])
 
-                    # Buscamos objetivo en la BD
-                    target = Institution.objects.filter(email__iexact=payload.sender_email).first()
-                    
-                    if target:
-                        logger.info(f"🎯 [MATCH] Interceptada respuesta de: {target.name} ({payload.sender_email})")
-                        
-                        # 2. Análisis Cuántico (Vía Async_to_Sync)
-                        analysis = async_to_sync(classifier.classify_inbound)(payload.clean_body)
-                        
-                        # 3. Transacción ACID Completa
-                        try:
-                            with transaction.atomic():
-                                # Prevención de duplicados vía Hash de Idempotencia
-                                if Interaction.objects.filter(idempotency_key=payload.idempotency_key).exists():
-                                    logger.warning(f"⚠️ Reenvío detectado y bloqueado para {target.name}")
-                                    mail.store(e_id, '+FLAGS', '\\Seen')
-                                    continue
+        latency = (time.perf_counter() - t_start) * 1000
+        logger.info(f"✅ [IMPACTO ABSOLUTO] IA neutralizó la objeción de {target_email}. Latencia: {latency:.2f}ms")
+        return f"God Tier Impact -> {target_email}"
 
-                                Interaction.objects.create(
-                                    institution=target,
-                                    channel='EMAIL',
-                                    direction='IN',
-                                    content=payload.clean_body,
-                                    is_ai_generated=False,
-                                    idempotency_key=payload.idempotency_key # Nuevo campo requerido
-                                )
-                                
-                                if analysis.get('requires_human') or analysis.get('sentiment') == 'SECURITY_RISK':
-                                    target.processing_status = Institution.ProcessingStatus.MANUAL_INTERVENTION
-                                
-                                target.status = analysis.get('sentiment', 'WARM')
-                                target.updated_at = timezone.now()
-                                target.save(update_fields=['processing_status', 'status', 'updated_at'])
-                                
-                                # 4. Telemetría WebSockets
-                                async_to_sync(channel_layer.group_send)(
-                                    "omni_hydra",
-                                    {
-                                        "type": "send_alert",
-                                        "message": {
-                                            "event": "INBOUND_REPLY",
-                                            "institution": target.name,
-                                            "sentiment": analysis.get('sentiment'),
-                                            "summary": analysis.get('summary'),
-                                            "latency_ms": analysis.get('processing_time_ms', 0)
-                                        }
-                                    }
-                                )
-                        except Exception as db_err:
-                            logger.error(f"💀 [DB ERROR] Fallo al guardar la interacción: {db_err}")
-                            continue
-
-                    # Solo marcamos como LEÍDO si sobrevivió al procesamiento
-                    mail.store(e_id, '+FLAGS', '\\Seen')
-
-                return f"Procesados {len(email_ids)} mensajes."
-
-        except imaplib.IMAP4.error as imap_err:
-            logger.error(f"❌ [IMAP EXCEPTION] Fallo de conexión: {imap_err}")
-            raise self.retry(exc=imap_err, countdown=60)
-        except Exception as e:
-            logger.error(f"❌ [FATAL ERROR] Colapso del Inbound Catcher: {e}")
-            raise self.retry(exc=e, countdown=120)
+    except Exception as e:
+        logger.critical(f"💀 [SYSTEM CRASH] Fallo catastrófico en Apex Engine: {e}", exc_info=True)
+        raise self.retry(exc=e, countdown=30)
 
 # ==============================================================================
 # [PROTOCOLO OMEGA]: FSM DE VENTAS Y CADENCIA MILITAR TIER-1

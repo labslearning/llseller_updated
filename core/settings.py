@@ -1,6 +1,6 @@
 """
 ================================================================================
-[TRANSCENDENT GOD TIER ARCHITECTURE: OMEGA QUANTUM LEVIATHAN CLASS V106]
+[TRANSCENDENT GOD TIER ARCHITECTURE: OMEGA QUANTUM LEVIATHAN CLASS V110]
 PROJECT: GHOST SNIPER - SOVEREIGN INTELLIGENCE ENGINE (PROJECT OMNISCIENT)
 STANDARDS: UNIT 8200 SPEC / SILICON WADI / 12-FACTOR APP / ISO-27001 / SOC2
 ENGINEERING: NATIVE DJANGO 5.x REDIS POOLING (FLAT ARCHITECTURE), 
@@ -155,8 +155,7 @@ if 'sqlite' not in DATABASES['default']['ENGINE']:
 # 🧠 [NIVEL DIOS 5]: DISTRIBUTED MEMORY (DJANGO 5 NATIVE REDIS POOLING)
 # ==============================================================================
 
-# [GOD TIER V108 FIX]: OVERRIDE ABSOLUTO. 
-# Ignoramos el .env y forzamos la conexión a localhost para el entorno de desarrollo local en Parrot OS.
+# [GOD TIER V110 FIX]: OVERRIDE ABSOLUTO PARA ALTA FRECUENCIA.
 REDIS_URL = "redis://127.0.0.1:6379/0"
 
 CACHES = {
@@ -185,7 +184,7 @@ CHANNEL_LAYERS = {
 }
 
 # ==============================================================================
-# ⚙️ [NIVEL DIOS 6]: CELERY AUTONOMOUS ORCHESTRATOR
+# ⚙️ [NIVEL DIOS 6]: CELERY AUTONOMOUS ORCHESTRATOR (BARRIDO 30S)
 # ==============================================================================
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
@@ -195,6 +194,7 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'America/Bogota'
 CELERY_ENABLE_UTC = False
 
+# Optimización de Worker para procesamiento de flujos constantes
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 50 
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1  
 CELERY_TASK_ACKS_LATE = True           
@@ -203,6 +203,9 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_TASK_SOFT_TIME_LIMIT = 300 
 CELERY_TASK_TIME_LIMIT = 360 
 
+# Gatillo de precisión para evitar colisiones en el scheduler
+CELERY_BEAT_MAX_LOOP_INTERVAL = 5 
+
 CELERY_TASK_ROUTES = {
     'sales.tasks.task_run_ghost_sniper': {'queue': 'scraping_queue'},
     'sales.tasks.task_run_osm_radar': {'queue': 'discovery_queue'},
@@ -210,9 +213,10 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
-    'poll_inbox_every_5_mins': {
+    # 🔥 [HIGH-FREQUENCY RADAR]: Sincronización cada 30 segundos exactos
+    'poll_inbox_high_frequency_sweep': {
         'task': 'sales.tasks.task_run_inbound_catcher',
-        'schedule': 300.0, 
+        'schedule': 30.0, 
     },
     'daily_intelligence_scoring': {
         'task': 'sales.tasks.task_batch_score_leads',
@@ -281,7 +285,7 @@ LOGGING = {
         'Sovereign': {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
         'sales': {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
         'urllib3': {'handlers': ['null'], 'level': 'INFO', 'propagate': False},
-        'celery': {'handlers': ['console'], 'level': 'INFO', 'propagate': False}, # Control del ruido de Celery
+        'celery': {'handlers': ['console'], 'level': 'INFO', 'propagate': False}, 
     },
 }
 

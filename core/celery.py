@@ -63,13 +63,14 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
 
 # ==========================================
-# 4. EL RELOJ MAESTRO (AUTONOMÍA TOTAL - SINGAPUR / LONDRES)
+# 4. EL RELOJ MAESTRO (AUTONOMÍA TOTAL - HIGH FREQUENCY POLLING)
 # ==========================================
 app.conf.beat_schedule = {
-    # 🎧 ESCUCHA ACTIVA (Oídos): Lee respuestas cada 10 minutos (Solo Horario Laboral, Lun-Vie)
-    'inbound-listener-10m': {
+    # 🔥 ESCUCHA ACTIVA (Oídos): OVERCLOCKING A 30 SEGUNDOS
+    # El Omni-Catcher escaneará el correo cada medio minuto de forma ininterrumpida.
+    'inbound-listener-high-frequency': {
         'task': 'sales.tasks.task_run_inbound_catcher',
-        'schedule': crontab(minute='*/10', hour='7-19', day_of_week='mon-fri'),
+        'schedule': 30.0, # Frecuencia absoluta en segundos (No usa crontab)
     },
     
     # 🚀 ATAQUE INICIAL (Voz Apertura): Dispara IA Copys a las 8:30 AM (Lun-Vie)
@@ -115,5 +116,5 @@ def on_worker_ready(**kwargs):
     """Hook de inicio: Notifica cuando la máquina de guerra está online."""
     logger.info("=========================================================")
     logger.info("⚡ [SOVEREIGN ENGINE] Celery Worker Online y Conectado al Broker.")
-    logger.info("⚡ Protocolos de Asedio y Catcher IMAP activados.")
+    logger.info("⚡ Protocolos de Asedio y Catcher IMAP activados en Alta Frecuencia.")
     logger.info("=========================================================")
