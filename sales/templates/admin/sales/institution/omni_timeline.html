@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es" class="antialiased">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Omni-Timeline | {{ institution.name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], },
+                    colors: {
+                        brand: { 50: '#eff6ff', 500: '#3b82f6', 900: '#1e3a8a', }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar B2B Premium */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        body { background-color: #f8fafc; }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <header class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div class="max-w-5xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">{{ institution.name }}</h1>
+                <p class="text-sm text-slate-500 font-medium mt-1">Cubo de Cristal • Historial de Interacciones</p>
+            </div>
+            
+            <div class="flex space-x-4">
+                <div class="bg-slate-50 px-4 py-2 rounded-lg border border-slate-100 shadow-sm text-center">
+                    <span class="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Registros</span>
+                    <span class="block text-lg font-bold text-slate-700">{{ analytics.total }}</span>
+                </div>
+                <div class="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 shadow-sm text-center">
+                    <span class="block text-xs font-semibold text-blue-400 uppercase tracking-wider">Open Rate</span>
+                    <span class="block text-lg font-bold text-blue-700">{{ analytics.open_rate }}%</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-6 py-12">
+        <div class="relative border-l-2 border-slate-200 ml-4 space-y-10">
+
+            {% for interaction in interactions %}
+            <div class="relative pl-8 group">
+                <div class="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-2 border-white 
+                    {% if interaction.status == 'OPENED' or interaction.status == 'REPLIED' or interaction.open_count > 0 %} 
+                        bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]
+                    {% elif interaction.status == 'SENT' %} 
+                        bg-blue-500
+                    {% else %} 
+                        bg-slate-300 
+                    {% endif %} 
+                    transition-all duration-300 group-hover:scale-125">
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition-shadow duration-200">
+                    
+                    <div class="flex justify-between items-start mb-3">
+                        <div class="flex items-center space-x-2">
+                            <span class="px-2.5 py-1 text-xs font-bold uppercase tracking-wider rounded-md 
+                                {% if interaction.channel == 'EMAIL' %} bg-slate-100 text-slate-600
+                                {% elif interaction.channel == 'WHATSAPP' %} bg-green-100 text-green-700
+                                {% else %} bg-gray-100 text-gray-600 {% endif %}">
+                                {{ interaction.get_channel_display }}
+                            </span>
+                            
+                            <span class="text-slate-400 text-sm font-bold">
+                                {% if interaction.direction == 'OUT' %} ↗️ OUT {% else %} ↙️ IN {% endif %}
+                            </span>
+                            
+                            <span class="font-medium text-slate-700 text-sm">
+                                {% if interaction.contact %}{{ interaction.contact.name }}{% else %}Contacto Principal{% endif %}
+                            </span>
+                        </div>
+                        
+                        <span class="text-xs text-slate-400 font-medium" title="{{ interaction.created_at }}">
+                            {{ interaction.created_at|date:"d M Y, H:i" }}
+                        </span>
+                    </div>
+
+                    <h3 class="text-base font-semibold text-slate-900 mb-2">{{ interaction.subject|default:"Sin Asunto" }}</h3>
+                    
+                    <div class="bg-slate-50 p-4 rounded-lg text-sm text-slate-600 leading-relaxed border border-slate-100 font-mono whitespace-pre-wrap">
+                        {{ interaction.content|striptags|truncatechars:350|default:"Contenido cifrado o no disponible." }}
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                        <div class="flex items-center space-x-3 text-xs font-medium">
+                            {% if interaction.open_count > 0 or interaction.status == 'OPENED' or interaction.status == 'REPLIED' %}
+                                <span class="flex items-center text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                    Capturado ({{ interaction.open_count }} lecturas)
+                                </span>
+                                {% if interaction.target_ip %}
+                                    <span class="text-slate-400 font-mono" title="{{ interaction.user_agent }}">
+                                        IP: {{ interaction.target_ip }}
+                                    </span>
+                                {% endif %}
+                            {% else %}
+                                <span class="flex items-center text-slate-400">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                                    En Espectro Oscuro (No Leído)
+                                </span>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="text-xs text-slate-400 font-mono" title="Identificador de Hilo: {{ interaction.thread_id }}">
+                            UUID: {{ interaction.tracking_uuid|truncatechars:12 }}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-10">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                    <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                </div>
+                <p class="text-slate-500 font-medium">El Cubo de Cristal está vacío. Inicia una secuencia para poblar la matriz.</p>
+            </div>
+            {% endfor %}
+
+        </div>
+
+        {% if interactions.has_other_pages %}
+        <div class="mt-12 flex justify-center">
+            <nav class="flex items-center space-x-2 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200">
+                {% if interactions.has_previous %}
+                    <a href="?page={{ interactions.previous_page_number }}" class="p-2 rounded-md text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    </a>
+                {% endif %}
+                
+                <span class="text-sm font-medium text-slate-600 px-4">
+                    Página {{ interactions.number }} de {{ interactions.paginator.num_pages }}
+                </span>
+
+                {% if interactions.has_next %}
+                    <a href="?page={{ interactions.next_page_number }}" class="p-2 rounded-md text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </a>
+                {% endif %}
+            </nav>
+        </div>
+        {% endif %}
+        
+        <div class="text-center mt-8">
+            <span class="inline-block bg-slate-100 text-slate-400 text-[10px] font-mono px-2 py-1 rounded">
+                Server Latency: {{ system_latency }}ms | OMEGA Architecture
+            </span>
+        </div>
+
+    </main>
+
+</body>
+</html>

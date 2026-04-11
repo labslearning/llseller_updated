@@ -725,54 +725,8 @@ class Contact(TimeStampedModel):
         return not self.pause_automations and self.status not in ['REJECTED', 'CONVERTED', 'PAUSED']
 
 
-# ==============================================================================
-# [GOD TIER] MODELO INTERACTION (Cosmic)
-# ==============================================================================
-class Interaction(TimeStampedModel):
-    """
-    Registro inmutable de todas las interacciones (Correos, WhatsApp, Notas).
-    """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    institution = models.ForeignKey(
-        'Institution', 
-        on_delete=models.CASCADE, 
-        related_name='interactions'
-    )
-    contact = models.ForeignKey(
-        Contact, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
-        related_name='interactions'
-    )
-    
-    # Asegúrate de mantener tus campos originales aquí si tenías más. 
-    # Añadí los campos mínimos que mencionas en los índices para que compile perfecto.
-    channel = models.CharField(max_length=50, blank=True, null=True)
-    status = models.CharField(max_length=50, blank=True, null=True)
-    direction = models.CharField(max_length=50, blank=True, null=True)
-    replied = models.BooleanField(default=False)
-    thread_id = models.CharField(max_length=255, blank=True, null=True)
-    next_action_date = models.DateTimeField(blank=True, null=True)
-    
-    # Campo de contenido (Opcional, pero necesario para historial)
-    content = models.TextField(blank=True, null=True)
 
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name = "🌌 Interacción B2B (Cosmic)"
-        verbose_name_plural = "🌌 Interacciones B2B (Cosmic)"
-        
-        indexes = [
-            # 🔥 FIX DEFINITIVO: Nombre de índice único para evitar colisión con Contact
-            models.Index(fields=['institution', 'status'], name='idx_int_inst_status'),
-            models.Index(fields=['status', 'replied'], name='idx_status_replied'),
-            models.Index(fields=['thread_id', 'created_at'], name='idx_thread_created'),
-            models.Index(fields=['next_action_date'], name='idx_next_action'),
-            models.Index(fields=['channel', 'status'], name='idx_channel_status'),
-            models.Index(fields=['contact', 'created_at'], name='idx_contact_created'),
-            models.Index(fields=['institution', 'direction', 'created_at'], name='idx_inst_dir_created'),
-        ]
+
 
     
 
@@ -788,30 +742,95 @@ class Interaction(TimeStampedModel):
     def can_be_automated(self):
         return not self.pause_automations and self.status not in ['REJECTED', 'CONVERTED', 'PAUSED']
 
-# ==============================================================================
-# IMPORTANTE: También debes revisar el modelo Interaction para evitar choques
-# ==============================================================================
-class Interaction(TimeStampedModel):
-    # ... otros campos de Interaction ...
-    # Asegúrate de que si Interaction tiene un índice llamado 'idx_inst_status',
-    # lo renombres a 'idx_int_inst_stat' para mantener la unicidad global.
-    pass
 
 
-class Interaction(TimeStampedModel):
+# ==============================================================================
+# [GOD TIER] ENUMS ESTRUCTURALES (Memory Safety & Data Integrity)
+# ==============================================================================
+class ChannelType(models.TextChoices):
+    EMAIL = 'EMAIL', _('Email')
+    WHATSAPP = 'WHATSAPP', _('WhatsApp')
+    SMS = 'SMS', _('SMS')
+    CALL = 'CALL', _('Llamada')
+
+class DirectionType(models.TextChoices):
+    INBOUND = 'IN', _('Inbound (Entrante)')
+    OUTBOUND = 'OUT', _('Outbound (Saliente)')
+
+class InteractionStatus(models.TextChoices):
+    PENDING = 'PENDING', _('Pendiente')
+    SENT = 'SENT', _('Enviado')
+    DELIVERED = 'DELIVERED', _('Entregado')
+    OPENED = 'OPENED', _('Abierto')
+    REPLIED = 'REPLIED', _('Respondido')
+    FAILED = 'FAILED', _('Fallido')
+
+# ==============================================================================
+# [GOD TIER] MODELO INTERACTION (El Cubo de Cristal & Telemetría)
+# ==============================================================================
+class Interaction(models.Model):
     """
-    [OMEGA AI MEMORY & QUANTUM STATE MACHINE]
-    Posee un hilo conversacional (Thread ID) y un programador de acciones
-    para que la IA sepa exactamente cuándo y cómo re-contactar.
+    Registro inmutable y omnicanal. 
+    Actúa como fuente de la verdad para el FSM, la IA Inbound y el Frontend.
     """
+    # 1. Identificadores Core
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey('Institution', on_delete=models.CASCADE, related_name='interactions')
+    contact = models.ForeignKey('Contact', on_delete=models.SET_NULL, null=True, blank=True, related_name='interactions')
     
-    # [MEMORIA DE LA IA] Agrupa correos y WhatsApps en una sola línea temporal
-    thread_id = models.CharField(
-        max_length=255, blank=True, null=True, db_index=True,
-        verbose_name="ID de Hilo (Contexto IA)",
-        help_text="UUID que agrupa toda la conversación."
-    )
+    # 2. Metadatos de Enrutamiento
+    channel = models.CharField(max_length=20, choices=ChannelType.choices, default=ChannelType.EMAIL)
+    direction = models.CharField(max_length=10, choices=DirectionType.choices, default=DirectionType.OUTBOUND)
+    status = models.CharField(max_length=20, choices=InteractionStatus.choices, default=InteractionStatus.PENDING)
+    
+    # 3. Carga Útil (Payload)
+    subject = models.CharField(max_length=255, null=True, blank=True)
+    content = models.TextField(help_text="El cuerpo del correo, mensaje de WA o nota de voz transcrita.")
+    
+    # 4. Hilos de Conversación (Preparación para Fase 3: IA Inbound)
+    replied = models.BooleanField(default=False)
+    thread_id = models.CharField(max_length=255, blank=True, null=True, help_text="Message-ID de Gmail para agrupar respuestas.")
+    next_action_date = models.DateTimeField(blank=True, null=True)
+    
+    # 5. [TELEMETRY CORE] Píxel Cuántico & Rastreo
+    tracking_uuid = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True, unique=True)
+    opened_at = models.DateTimeField(null=True, blank=True)
+    open_count = models.IntegerField(default=0)
+    target_ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    
+    # 6. Auditoría Temporal
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Ordenación por defecto para el Cubo de Cristal (El más reciente primero)
+        ordering = ['-created_at']
+        verbose_name = "🌌 Interacción Omni-Channel"
+        verbose_name_plural = "🌌 Interacciones Omni-Channel"
+        
+        # [BIG O OPTIMIZATION] Índices B-Tree para latencia cero
+        indexes = [
+            # Índice vital para cargar el historial del colegio en el frontend instantáneamente: O(log N)
+            models.Index(fields=['institution', '-created_at'], name='idx_inst_timeline'),
+            
+            # Índice para el Cronjob / FSM (buscar a quién no le hemos escrito)
+            models.Index(fields=['status', 'direction', 'replied'], name='idx_status_dir_rep'),
+            
+            # Índice para la IA Inbound (agrupar correos por hilo)
+            models.Index(fields=['thread_id', 'created_at'], name='idx_thread_timeline'),
+            
+            # El Tracking UUID ya tiene db_index=True en su definición, lo que garantiza O(1).
+        ]
+
+    def __str__(self):
+        return f"[{self.direction}] {self.channel} -> {self.institution.name} ({self.get_status_display()})"
+
+    @property
+    def is_opened(self):
+        """Helper visual para el frontend."""
+        return self.open_count > 0 or self.status in [InteractionStatus.OPENED, InteractionStatus.REPLIED]
+
     
     # ==========================================
     # 1. CLASES DE OPCIONES (ENUMS)

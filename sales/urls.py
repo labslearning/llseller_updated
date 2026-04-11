@@ -1,6 +1,6 @@
 """
 ================================================================================
-[GOD TIER OMEGA ARCHITECTURE: URL ROUTING PLEXUS V10.1]
+[GOD TIER OMEGA ARCHITECTURE: URL ROUTING PLEXUS V10.2]
 ================================================================================
 """
 
@@ -9,6 +9,7 @@ from . import views
 from . import views_report
 from . import views_omni
 from . import views_telemetry
+from . import views_timeline # [INYECCIÓN TÁCTICA]: El cerebro del Cubo de Cristal
 
 app_name = 'sales'
 
@@ -19,10 +20,11 @@ urlpatterns = [
     # ==========================================================================
     
     # 1. Interfaz Omni-Timeline (El Dashboard de WebSockets en Tiempo Real)
-    # [FIX]: Apuntamos a views.py en lugar de views_omni.py
+    # [FIX GOD TIER]: Enforzamos UUID estricto para evitar inyecciones, 
+    # alineamos el parámetro con institution_id y apuntamos al motor correcto.
     path(
-        'omni-timeline/<str:entity_id>/', 
-        views.omni_timeline_view, 
+        'omni-timeline/<uuid:institution_id>/', 
+        views_timeline.omni_timeline_view, 
         name='omni_timeline'
     ),
     
