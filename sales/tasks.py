@@ -71,7 +71,8 @@ from .models import Institution, Interaction
 
 
 from ddgs import DDGS
-from openai import AsyncOpenAI, RateLimitError, APIConnectionError, APIError
+#from openai import AsyncOpenAI, RateLimitError, APIConnectionError, APIError
+from openai import AsyncOpenAI, OpenAI, RateLimitError, APIConnectionError, APIError
 
 
 from .engine.ai_omni_brain import OmniAIBrain  # Asegúrate de usar el nombre de la clase correcta que creamos en el Paso 1
@@ -684,112 +685,7 @@ def task_run_inbound_catcher():
         return str(e)
 
 
-# ==============================================================================
-# 🚀 MÓDULO 3: APEX RESPONSE ENGINE (OUTBOUND AUTÓNOMO)
-# ==============================================================================
 
-@shared_task(
-    bind=True,
-    name='sales.tasks.task_process_inbound_and_reply',
-    max_retries=3,
-    acks_late=True,
-    reject_on_worker_lost=True
-)
-def task_process_inbound_and_reply(self, institution_id: str):
-    """
-    [GOD TIER LEVEL] Apex Response Engine V15
-    Arquitectura atómica, idempotente, resistente a fallos SMTP y con memoria contextual dinámica.
-    """
-    t_start = time.perf_counter()
-    logger.info(f"⚡ [APEX IGNITION] Secuencia de contraataque iniciada. Target ID: {institution_id}")
-    
-    try:
-        # FASE 1: ATOMIC LOCK & RETRIEVAL
-        with transaction.atomic():
-            institution = Institution.objects.select_for_update().get(id=institution_id)
-            
-            incoming = Interaction.objects.filter(
-                institution=institution,
-                channel=ChannelType.EMAIL,
-                direction=DirectionType.INBOUND
-            ).select_related('contact').order_by('-created_at').first()
-            
-            if not incoming:
-                logger.warning(f"⚠️ [ABORT] No se detectó Interaction INBOUND para {institution_id}")
-                return "Operation Skipped: No Inbound"
-
-            target_contact = incoming.contact
-            target_email = target_contact.email
-            target_name = target_contact.name or institution.name
-
-            # FASE 2: BARRERA DE IDEMPOTENCIA
-            already_replied = Interaction.objects.filter(
-                institution=institution,
-                direction=DirectionType.OUTBOUND,
-                created_at__gt=incoming.created_at
-            ).exists()
-            
-            if already_replied:
-                logger.warning(f"🛡️ [IDEMPOTENCY SHIELD] Respuesta ya enviada post-recepción para {target_email}.")
-                return "Operation Skipped: Already Replied"
-
-        # FASE 3: EXTRACCIÓN DE MEMORIA CONTEXTUAL
-        last_outbound = Interaction.objects.filter(
-            institution=institution,
-            direction=DirectionType.OUTBOUND,
-            created_at__lt=incoming.created_at
-        ).order_by('-created_at').first()
-        
-        previous_context = last_outbound.content if last_outbound else "[INICIACIÓN B2B: Prospecto contactó de forma proactiva. Presentar Learning Labs.]"
-
-        # FASE 4: INFERENCIA OMEGA (DeepSeek Cognitive Core)
-        logger.info(f"🧠 [COGNITIVE ROUTING] Sintetizando contraataque para: {target_email}...")
-        ai_brain = SovereignAI()
-        ai_reply_text = ai_brain.generate_counter_attack(
-            target_name=target_name,
-            previous_email_content=previous_context,
-            incoming_reply=incoming.content
-        )
-
-        # FASE 5: WEAPONIZED SMTP PAYLOAD
-        subject = incoming.subject if incoming.subject.lower().startswith("re:") else f"Re: {incoming.subject}"
-        
-        email_msg = EmailMessage(
-            subject=subject,
-            body=ai_reply_text,
-            from_email=f"Miller Ospina | Learning Labs <{settings.EMAIL_HOST_USER}>",
-            to=[target_email],
-            headers={
-                'In-Reply-To': incoming.thread_id,
-                'References': incoming.thread_id
-            }
-        )
-        
-        logger.info(f"🚀 [FIRING MISSILE] Transmitiendo payload SMTP hacia {target_email}...")
-        email_msg.send(fail_silently=False)
-
-        # FASE 6: PERSISTENCIA ATÓMICA DE ESTADO
-        with transaction.atomic():
-            Interaction.objects.create(
-                institution=institution,
-                contact=target_contact,
-                channel=ChannelType.EMAIL,
-                direction=DirectionType.OUTBOUND,
-                status=InteractionStatus.SENT,
-                subject=subject,
-                content=ai_reply_text,
-                thread_id=incoming.thread_id
-            )
-            institution.processing_status = 'REPLIED'
-            institution.save(update_fields=['processing_status'])
-
-        latency = (time.perf_counter() - t_start) * 1000
-        logger.info(f"✅ [IMPACTO ABSOLUTO] IA neutralizó la objeción de {target_email}. Latencia: {latency:.2f}ms")
-        return f"God Tier Impact -> {target_email}"
-
-    except Exception as e:
-        logger.critical(f"💀 [SYSTEM CRASH] Fallo catastrófico en Apex Engine: {e}", exc_info=True)
-        raise self.retry(exc=e, countdown=30)
 
 # ==============================================================================
 # [PROTOCOLO OMEGA]: FSM DE VENTAS Y CADENCIA MILITAR TIER-1
@@ -1652,156 +1548,144 @@ def task_execute_single_drip_node(self, target_id: int, email_step: int, fsm_eve
     except Exception as e:
         node_logger.error(f"💀 [FATAL NODE ERROR] Colapso incontrolable: {e}", exc_info=True)
         raise self.retry(exc=e, countdown=60)
-
-import logging
-import time
-from smtplib import SMTPException
-from celery import shared_task
-from celery.exceptions import MaxRetriesExceededError
-from django.conf import settings
-from django.db import transaction
-from django.core.mail import EmailMessage
-
-from sales.models import (
-    Institution, Contact, Interaction, 
-    ChannelType, DirectionType, InteractionStatus
-)
-from sales.services.ai_service import SovereignAI
-
-logger = logging.getLogger('Sovereign.ApexEngine.V15')
-
+# ==============================================================================
+# 🚀 THE 1 MILLION DOLLAR APEX CLOSER (AUTOPILOT B2B)
+# ==============================================================================
 @shared_task(
     bind=True,
-    name='sales.tasks.task_process_inbound_and_reply',
+    name='sales.tasks.task_fire_apex_closer_reply',
     max_retries=3,
-    acks_late=True,  # [GOD TIER] Garantiza que Celery no borre la tarea si el worker muere a la mitad
+    autoretry_for=(Exception,), 
+    retry_backoff=True,
+    acks_late=True,
     reject_on_worker_lost=True
 )
-def task_process_inbound_and_reply(self, institution_id: str):
+def task_fire_apex_closer_reply(self, interaction_id: str):
     """
-    [GOD TIER LEVEL] Apex Response Engine V15
-    Diseñado bajo estándares de Silicon Wadi / Tel Aviv.
-    Arquitectura atómica, idempotente, resistente a fallos SMTP y con memoria contextual dinámica.
+    [GOD TIER LEVEL] The 1 Million Dollar Auto-Closer.
+    Disparado estrictamente por `signals.py` al recibir el primer correo.
+    Inyecta neuro-lingüística de ventas corporativas y responde en < 15 segundos.
     """
     t_start = time.perf_counter()
-    logger.info(f"⚡ [APEX IGNITION] Secuencia de contraataque iniciada. Target ID: {institution_id}")
+    logger.info(f"⚡ [APEX CLOSER] Secuencia de cierre B2B iniciada. Interaction ID: {interaction_id}")
     
     try:
-        # ==============================================================================
-        # FASE 1: ATOMIC LOCK & RETRIEVAL (Cero Colisiones de Hilos)
-        # ==============================================================================
+        # FASE 1: ATOMIC LOCK & RETRIEVAL
         with transaction.atomic():
-            # Bloqueo de fila a nivel de BD para evitar paralelismo destructivo
-            institution = Institution.objects.select_for_update().get(id=institution_id)
+            inbound = Interaction.objects.select_for_update().get(id=interaction_id)
+            colegio = inbound.institution
             
-            # Localizar el vector de entrada más reciente
-            incoming = Interaction.objects.filter(
-                institution=institution,
-                channel=ChannelType.EMAIL,
-                direction=DirectionType.INBOUND
-            ).select_related('contact').order_by('-created_at').first()
-            
-            if not incoming:
-                logger.warning(f"⚠️ [ABORT] Espectro limpio. No se detectó Interaction INBOUND para {institution_id}")
-                return "Operation Skipped: No Inbound"
+            if not colegio:
+                return "Abort: Inbound without Institution."
 
-            # Resolución Dinámica de Identidad (DIR)
-            target_contact = incoming.contact
-            target_email = target_contact.email
-            target_name = target_contact.name or institution.name
-
-            # ==============================================================================
-            # FASE 2: BARRERA DE IDEMPOTENCIA (Anti Double-Tap)
-            # ==============================================================================
-            # Verifica si ya disparamos un correo de respuesta DESPUÉS de que llegó el suyo
+            # Anti-Double Tap: Si por algún motivo Celery ejecutó esto dos veces, bloqueamos.
             already_replied = Interaction.objects.filter(
-                institution=institution,
-                direction=DirectionType.OUTBOUND,
-                created_at__gt=incoming.created_at
+                institution=colegio,
+                direction__in=['OUT', 'OUTBOUND'],
+                channel='EMAIL',
+                created_at__gt=inbound.created_at
             ).exists()
             
             if already_replied:
-                logger.warning(f"🛡️ [IDEMPOTENCY SHIELD] Abortando duplicado. Respuesta ya enviada post-recepción para {target_email}.")
+                logger.warning(f"🛡️ [IDEMPOTENCY] Respuesta ya enviada al correo de {colegio.name}. Abortando duplicado.")
                 return "Operation Skipped: Already Replied"
 
-        # ==============================================================================
-        # FASE 3: EXTRACCIÓN DE MEMORIA CONTEXTUAL (Windowing)
-        # ==============================================================================
-        # Fuera del transaction.atomic() para no bloquear la BD durante el Request a DeepSeek
-        last_outbound = Interaction.objects.filter(
-            institution=institution,
-            direction=DirectionType.OUTBOUND,
-            created_at__lt=incoming.created_at
-        ).order_by('-created_at').first()
-        
-        # Si el usuario escribió primero, inyectamos un prompt semilla. Si no, usamos nuestro último correo.
-        previous_context = last_outbound.content if last_outbound else "[INICIACIÓN B2B: Prospecto contactó de forma proactiva. Presentar Learning Labs.]"
+        # Extracción segura de la data
+        mensaje_cliente = inbound.content or inbound.message_received or "Respuesta sin contenido de texto."
+        contacto_target = colegio.contacts.first()
+        correo_destino = contacto_target.email if contacto_target and contacto_target.email else colegio.email
 
-        # ==============================================================================
-        # FASE 4: INFERENCIA OMEGA (DeepSeek Cognitive Core)
-        # ==============================================================================
-        logger.info(f"🧠 [COGNITIVE ROUTING] Sintetizando contraataque para: {target_email}...")
+        if not correo_destino:
+            logger.error(f"❌ [APEX CLOSER] Sin correo de destino para {colegio.name}.")
+            return "Failed: No destination email."
+
+        asunto_original = inbound.subject or f"Oportunidad Estratégica: {colegio.name}"
+        asunto_respuesta = asunto_original if str(asunto_original).lower().startswith('re:') else f"Re: {asunto_original}"
+
+        logger.info(f"🧠 [APEX CLOSER] Sintetizando lingüística corporativa para {colegio.name}...")
+
+        # FASE 2: INGENIERÍA PSICOLÓGICA (1 MILLION DOLLAR PROMPT)
+        SYSTEM_PROMPT = f"""
+        ERES LA ÉLITE: Actúa como el Director de Expansión Estratégica (Enterprise Account Executive) de OMNI-HYDRA, una firma tecnológica de élite (Nivel Silicon Valley).
+        Estás cerrando contratos de software B2B de 7 cifras con instituciones educativas premium.
         
-        ai_brain = SovereignAI()
-        ai_reply_text = ai_brain.generate_counter_attack(
-            target_name=target_name,
-            previous_email_content=previous_context,
-            incoming_reply=incoming.content
+        CONTEXTO TÁCTICO:
+        El cliente (Institución: {colegio.name}) acaba de responder a nuestro primer correo de prospección.
+        Su respuesta exacta fue: "{mensaje_cliente}"
+        
+        TU MISIÓN (OBJETIVO ABSOLUTO):
+        Redactar el CUERPO de un correo electrónico de respuesta que logre agendar una llamada ejecutiva ("Executive Sync") de 10 a 15 minutos. 
+        
+        REGLAS DE ORO DEL CÓDIGO DE VENTAS (CUMPLIMIENTO ESTRICTO):
+        1. TONO: Autoridad absoluta, respeto ejecutivo, empatía corporativa. Cero desesperación. Hablas de director a director.
+        2. ESTRUCTURA (3 párrafos cortos máximo):
+           - Párrafo 1: Validación instantánea (agradece la respuesta de forma directa y haz eco de lo que dijeron o de su dolor principal).
+           - Párrafo 2: El pivote de valor (Menciona en 1 línea cómo nuestra tecnología automatiza operaciones, aumenta retención de alumnos y proyecta prestigio, generando ROI inmediato).
+           - Párrafo 3: Call to Action (CTA) de baja fricción.
+        3. EL CTA PERFECTO: No uses calendly ni formularios que generen fricción. Ofrece DOS opciones claras de agenda.
+           (Ejemplo: "¿Tendrías 10 minutos este martes a las 10:00 AM o el jueves a las 3:00 PM para un breve executive sync?")
+        4. IDIOMA: Español latinoamericano corporativo, sofisticado, elegante. Cero palabras vulgares.
+        5. FIRMA: No agregues firma al final.
+        
+        ENTREGABLE:
+        Solo devuelve el texto plano del cuerpo del correo. Nada de introducciones tuyas. Empieza directamente con el saludo.
+        """
+
+        # FASE 3: SÍNTESIS CUÁNTICA (OpenAI / DeepSeek Sync Call)
+        api_key = os.environ.get("DEEPSEEK_API_KEY") or getattr(settings, 'DEEPSEEK_API_KEY', None)
+        if not api_key:
+            raise ValueError("Falta DEEPSEEK_API_KEY en variables de entorno.")
+
+        sync_client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        
+        response = sync_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": "Genera el correo táctico B2B exacto que debo enviar."}
+            ],
+            temperature=0.6,
+            max_tokens=800
         )
-
-        # ==============================================================================
-        # FASE 5: WEAPONIZED SMTP PAYLOAD (RFC 2822 Compliance)
-        # ==============================================================================
-        subject = incoming.subject if incoming.subject.lower().startswith("re:") else f"Re: {incoming.subject}"
         
-        # Clase EmailMessage para inyección de Headers forenses
+        cuerpo_generado = response.choices[0].message.content.strip()
+        logger.info(f"🚀 [APEX CLOSER] Lingüística sintetizada con éxito. Longitud: {len(cuerpo_generado)} bytes.")
+
+        # FASE 4: DESPLIEGUE DEL ARMAMENTO (SMTP)
         email_msg = EmailMessage(
-            subject=subject,
-            body=ai_reply_text,
+            subject=asunto_respuesta,
+            body=cuerpo_generado,
             from_email=f"Miller Ospina | Learning Labs <{settings.EMAIL_HOST_USER}>",
-            to=[target_email],
+            to=[correo_destino],
             headers={
-                'In-Reply-To': incoming.thread_id,
-                'References': incoming.thread_id
+                'In-Reply-To': inbound.thread_id or '',
+                'References': inbound.thread_id or ''
             }
         )
-        
-        logger.info(f"🚀 [FIRING MISSILE] Transmitiendo payload SMTP hacia {target_email}...")
         email_msg.send(fail_silently=False)
 
-        # ==============================================================================
-        # FASE 6: PERSISTENCIA ATÓMICA DE ESTADO
-        # ==============================================================================
+        # FASE 5: INMUTABILIDAD EN LA MATRIX (Registro en Omni-Timeline)
         with transaction.atomic():
             Interaction.objects.create(
-                institution=institution,
-                contact=target_contact,
-                channel=ChannelType.EMAIL,
-                direction=DirectionType.OUTBOUND,
-                status=InteractionStatus.SENT,
-                subject=subject,
-                content=ai_reply_text,
-                thread_id=incoming.thread_id
+                institution=colegio,
+                contact=contacto_target,
+                direction='OUT',
+                channel='EMAIL',
+                type='auto_reply_apex_closer',
+                subject=asunto_respuesta,
+                content=cuerpo_generado,
+                status='SENT',
+                is_ai_generated=True,
+                ai_sentiment='STRATEGIC_PUSH',
+                thread_id=inbound.thread_id
             )
-            # Actualización del Lead FSM
-            institution.processing_status = 'REPLIED'
-            institution.save(update_fields=['processing_status'])
+            colegio.processing_status = 'NEGOTIATING'
+            colegio.save(update_fields=['processing_status'])
 
         latency = (time.perf_counter() - t_start) * 1000
-        logger.info(f"✅ [IMPACTO ABSOLUTO] IA neutralizó la objeción de {target_email}. Latencia End-to-End: {latency:.2f}ms")
-        return f"God Tier Impact -> {target_email}"
+        logger.info(f"✅ [IMPACTO ABSOLUTO] APEX Closer envió munición B2B a {correo_destino}. Latencia: {latency:.2f}ms")
+        return f"Apex Closer Impact -> {correo_destino}"
 
-    except SMTPException as smtp_err:
-        logger.error(f"📡 [SMTP FAILURE] Google rechazó la conexión temporalmente: {smtp_err}")
-        # [GOD TIER] Exponential Backoff: Espera 60s, 120s, 240s... según el número de reintento.
-        backoff_time = 60 * (2 ** self.request.retries)
-        raise self.retry(exc=smtp_err, countdown=backoff_time)
-        
-    except MaxRetriesExceededError:
-        logger.critical(f"💀 [TARGET LOST] Máximo número de reintentos superado para {institution_id}.")
-        return "Fatal: Max Retries Exceeded"
-        
     except Exception as e:
-        logger.critical(f"💀 [SYSTEM CRASH] Fallo catastrófico en Apex Engine: {e}", exc_info=True)
-        # Reintento estático de 30s para errores de base de datos o memoria
-        raise self.retry(exc=e, countdown=30)
+        logger.critical(f"💀 [FATAL ERROR] Fallo catastrófico en Apex Closer Engine: {e}", exc_info=True)
+        raise self.retry(exc=e, countdown=45)

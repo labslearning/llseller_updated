@@ -290,3 +290,74 @@ class ForceSyncInboundView(View):
                 'message': 'Falla de conexión de red, timeout o rechazo de autenticación IMAP.',
                 'error_details': str(e)
             }, status=500)
+
+
+# ==============================================================================
+# [GOD TIER INJECTION]: THE APEX CLOSER MANUAL TRIGGER (HITL)
+# ==============================================================================
+# Asegúrate de que estos imports existan al inicio del archivo o agrégalos aquí
+from django.http import JsonResponse
+from .models import Interaction, Institution
+from .tasks import task_fire_apex_closer_reply
+
+class FireApexCloserView(View):
+    """
+    [ASGI CORTEX]: Gatillo manual para la IA de cierre B2B.
+    Busca el último correo entrante del cliente y fuerza la respuesta de 1 Millón de Dólares.
+    Diseñado para ejecución paralela en hilos aislados (Thread-safe).
+    """
+    async def post(self, request, institution_id, *args, **kwargs):
+        start_time = time.time()
+        ip_address = extract_real_ip(request.META) # Usamos tu extractor de grado militar
+        
+        logger.info(f">> 🚀 [TACTICAL OVERRIDE] Disparando APEX Closer manualmente para ID: {institution_id}")
+        
+        try:
+            # 1. Recuperación Asíncrona de la Institución
+            institution = await sync_to_async(Institution.objects.get)(id=institution_id)
+            
+            # 2. Localización del vector de entrada (Último Inbound de este colegio)
+            # Buscamos la interacción más reciente que sea un correo del cliente
+            latest_inbound = await sync_to_async(
+                lambda: Interaction.objects.filter(
+                    institution=institution,
+                    direction__in=['IN', 'INBOUND'],
+                    channel='EMAIL'
+                ).order_by('-created_at').first()
+            )()
+            
+            if not latest_inbound:
+                return JsonResponse({
+                    'status': 'error',
+                    'code': 404,
+                    'message': 'Abortado: No existe un correo entrante para responder en este objetivo.'
+                }, status=404)
+
+            # 3. Disparo del Motor de IA (Sincronizado vía Celery Task en modo síncrono)
+            # Pasamos el ID de la interacción a la tarea que ya tiene el prompt de 1 millón de dólares
+            await sync_to_async(task_fire_apex_closer_reply, thread_sensitive=False)(str(latest_inbound.id))
+            
+            execution_time = (time.time() - start_time) * 1000
+            
+            logger.info(f">> ✅ [APEX SUCCESS] Respuesta enviada en {execution_time:.2f}ms.")
+            
+            return JsonResponse({
+                'status': 'success',
+                'code': 200,
+                'message': 'Misil B2B impactado. Respuesta de IA registrada en el Timeline.',
+                'telemetry': {
+                    'execution_time_ms': round(execution_time, 2),
+                    'target_interaction_uuid': str(latest_inbound.id)
+                }
+            }, status=200)
+            
+        except Institution.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': 'Institución inexistente en la Matrix.'}, status=404)
+        except Exception as e:
+            logger.error(f">> 💀 [APEX CRITICAL FAILURE]: {str(e)}")
+            return JsonResponse({
+                'status': 'error',
+                'code': 500,
+                'message': 'Falla interna en la síntesis del Closer.',
+                'error_details': str(e)
+            }, status=500)
