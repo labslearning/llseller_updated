@@ -1548,144 +1548,246 @@ def task_execute_single_drip_node(self, target_id: int, email_step: int, fsm_eve
     except Exception as e:
         node_logger.error(f"💀 [FATAL NODE ERROR] Colapso incontrolable: {e}", exc_info=True)
         raise self.retry(exc=e, countdown=60)
+import os
+import time
+import logging
+from celery import shared_task
+from django.conf import settings
+from django.db import transaction, IntegrityError
+from django.core.mail import EmailMessage
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
 # ==============================================================================
-# 🚀 THE 1 MILLION DOLLAR APEX CLOSER (AUTOPILOT B2B)
+# 🚀 [GOD TIER LEVIATHAN] THE 1 MILLION DOLLAR APEX CLOSER (AUTOPILOT B2B)
 # ==============================================================================
+
 @shared_task(
     bind=True,
     name='sales.tasks.task_fire_apex_closer_reply',
-    max_retries=3,
+    max_retries=5,
     autoretry_for=(Exception,), 
     retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
     acks_late=True,
     reject_on_worker_lost=True
 )
 def task_fire_apex_closer_reply(self, interaction_id: str):
     """
     [GOD TIER LEVEL] The 1 Million Dollar Auto-Closer.
-    Disparado estrictamente por `signals.py` al recibir el primer correo.
-    Inyecta neuro-lingüística de ventas corporativas y responde en < 15 segundos.
+    Arquitectura de asalto B2B asíncrona con Inyección HTML y Copywriting de Élite.
+    Sintetiza neuro-lingüística corporativa vía LLM y ejecuta el despliegue SMTP.
     """
     t_start = time.perf_counter()
-    logger.info(f"⚡ [APEX CLOSER] Secuencia de cierre B2B iniciada. Interaction ID: {interaction_id}")
+    logger.info(f"⚡ [APEX CLOSER] Secuencia de cierre B2B iniciada. Rastreando Interaction ID: {interaction_id}")
     
     try:
-        # FASE 1: ATOMIC LOCK & RETRIEVAL
+        # ----------------------------------------------------------------------
+        # FASE 1: ATOMIC LOCK & RETRIEVAL (Concurrency Control Absoluto)
+        # ----------------------------------------------------------------------
         with transaction.atomic():
-            inbound = Interaction.objects.select_for_update().get(id=interaction_id)
+            try:
+                from sales.models import Interaction
+                inbound = Interaction.objects.select_for_update().get(id=interaction_id)
+            except Exception as lock_err:
+                logger.error(f"❌ [DB LOCK FAILED] No se pudo asegurar el bloqueo atómico para ID {interaction_id}: {lock_err}")
+                return "Abort: Record lock failed or missing."
+
             colegio = inbound.institution
             
             if not colegio:
+                logger.warning(f"⚠️ [DATA ANOMALY] Interacción {interaction_id} carece de Institución. Abortando.")
                 return "Abort: Inbound without Institution."
 
-            # Anti-Double Tap: Si por algún motivo Celery ejecutó esto dos veces, bloqueamos.
+            # Escudo Anti-Fuego Amigo (Idempotency)
             already_replied = Interaction.objects.filter(
                 institution=colegio,
                 direction__in=['OUT', 'OUTBOUND'],
                 channel='EMAIL',
-                created_at__gt=inbound.created_at
+                created_at__gt=inbound.created_at,
+                is_ai_generated=True
             ).exists()
             
             if already_replied:
-                logger.warning(f"🛡️ [IDEMPOTENCY] Respuesta ya enviada al correo de {colegio.name}. Abortando duplicado.")
+                logger.warning(f"🛡️ [IDEMPOTENCY MATRIX] Respuesta APEX ya registrada para {colegio.name}. Bloqueando despliegue doble.")
                 return "Operation Skipped: Already Replied"
 
-        # Extracción segura de la data
-        mensaje_cliente = inbound.content or inbound.message_received or "Respuesta sin contenido de texto."
-        contacto_target = colegio.contacts.first()
-        correo_destino = contacto_target.email if contacto_target and contacto_target.email else colegio.email
+        # ----------------------------------------------------------------------
+        # FASE 2: DATA EXTRACTION & PAYLOAD PREPARATION
+        # ----------------------------------------------------------------------
+        mensaje_cliente = getattr(inbound, 'content', None) or getattr(inbound, 'message_received', None) or "Cliente respondió, procediendo con asalto B2B estándar."
+        
+        contacto_target = colegio.contacts.first() if hasattr(colegio, 'contacts') else None
+        correo_destino = getattr(contacto_target, 'email', None) if contacto_target else getattr(colegio, 'email', None)
 
         if not correo_destino:
-            logger.error(f"❌ [APEX CLOSER] Sin correo de destino para {colegio.name}.")
+            logger.error(f"❌ [TARGETING ERROR] Sin vector de correo (Email) para {colegio.name}.")
             return "Failed: No destination email."
 
-        asunto_original = inbound.subject or f"Oportunidad Estratégica: {colegio.name}"
-        asunto_respuesta = asunto_original if str(asunto_original).lower().startswith('re:') else f"Re: {asunto_original}"
+        asunto_original = getattr(inbound, 'subject', f"Estrategia de Innovación: {colegio.name}")
+        if not asunto_original: asunto_original = f"Estrategia de Innovación: {colegio.name}"
+        
+        asunto_respuesta = asunto_original if str(asunto_original).lower().startswith(('re:', 're :')) else f"Re: {asunto_original}"
 
-        logger.info(f"🧠 [APEX CLOSER] Sintetizando lingüística corporativa para {colegio.name}...")
+        logger.info(f"🧠 [NEURO-ENGINE] Inicializando matriz de Copywriting para {colegio.name}. Vector: {correo_destino}")
 
-        # FASE 2: INGENIERÍA PSICOLÓGICA (1 MILLION DOLLAR PROMPT)
+        # ----------------------------------------------------------------------
+        # FASE 3: NEURO-MARKETING B2B (THE SILICON VALLEY ENTERPRISE PROMPT)
+        # ----------------------------------------------------------------------
         SYSTEM_PROMPT = f"""
-        ERES LA ÉLITE: Actúa como el Director de Expansión Estratégica (Enterprise Account Executive) de OMNI-HYDRA, una firma tecnológica de élite (Nivel Silicon Valley).
-        Estás cerrando contratos de software B2B de 7 cifras con instituciones educativas premium.
+        ERES LA ÉLITE: Eres el Director de Expansión Estratégica (Enterprise Account Executive) de "Learning Labs", la firma de tecnología educativa más avanzada y premium del mercado.
+        Cierras contratos de software B2B de altísimo valor con instituciones educativas y universidades de primer nivel.
         
         CONTEXTO TÁCTICO:
-        El cliente (Institución: {colegio.name}) acaba de responder a nuestro primer correo de prospección.
+        El cliente (Institución: {colegio.name}) acaba de responder a nuestro correo de prospección inicial.
         Su respuesta exacta fue: "{mensaje_cliente}"
         
         TU MISIÓN (OBJETIVO ABSOLUTO):
-        Redactar el CUERPO de un correo electrónico de respuesta que logre agendar una llamada ejecutiva ("Executive Sync") de 10 a 15 minutos. 
+        Redactar el CUERPO de un correo de respuesta en formato HTML impecable que genere deseo instantáneo y logre agendar una llamada ejecutiva ("Executive Sync") de 10 a 15 minutos.
         
-        REGLAS DE ORO DEL CÓDIGO DE VENTAS (CUMPLIMIENTO ESTRICTO):
-        1. TONO: Autoridad absoluta, respeto ejecutivo, empatía corporativa. Cero desesperación. Hablas de director a director.
-        2. ESTRUCTURA (3 párrafos cortos máximo):
-           - Párrafo 1: Validación instantánea (agradece la respuesta de forma directa y haz eco de lo que dijeron o de su dolor principal).
-           - Párrafo 2: El pivote de valor (Menciona en 1 línea cómo nuestra tecnología automatiza operaciones, aumenta retención de alumnos y proyecta prestigio, generando ROI inmediato).
-           - Párrafo 3: Call to Action (CTA) de baja fricción.
-        3. EL CTA PERFECTO: No uses calendly ni formularios que generen fricción. Ofrece DOS opciones claras de agenda.
-           (Ejemplo: "¿Tendrías 10 minutos este martes a las 10:00 AM o el jueves a las 3:00 PM para un breve executive sync?")
-        4. IDIOMA: Español latinoamericano corporativo, sofisticado, elegante. Cero palabras vulgares.
-        5. FIRMA: No agregues firma al final.
-        
+        REGLAS DE COPYWRITING B2B (NIVEL DIOS):
+        1. TONO: Magnético, sofisticado, asertivo, de alto estatus. Vendes prestigio y transformación absoluta, no solo "software". Cero desesperación. Hablas de director a director.
+        2. ESTRUCTURA HTML (Breathable Text): Usa etiquetas <p> con estilos limpios. Ningún párrafo debe superar las 3 líneas de lectura. Usa <br><br> para oxigenar visualmente el texto.
+        3. EL "AHA MOMENT": Explica en 2 viñetas (<ul><li style="margin-bottom: 8px;">) cómo nuestro ecosistema exclusivo reduce la carga operativa del colegio, eleva la retención y posiciona a la institución en la vanguardia tecnológica. Usa <b> sutilmente para destacar el ROI o palabras clave.
+        4. CTA (Llamado a la acción): Cero fricción. Ofrece dos opciones de horario precisas. (Ej: "¿Tendrías 10 minutos este martes a las 10:00 AM o el jueves a las 3:00 PM?")
+        5. FIRMA ESTÉTICA (OBLIGATORIA Y EXACTA):
+           Tu correo DEBE terminar única y exclusivamente con este bloque de código HTML. No lo alteres, no agregues "Saludos", "Atentamente", ni NADA adicional debajo de él:
+           
+           <br><br>
+           <table cellpadding="0" cellspacing="0" border="0" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+               <tr>
+                   <td style="padding-right: 14px; border-right: 2px solid #3b82f6;">
+                       <strong style="color: #0f172a; font-size: 15px; letter-spacing: -0.3px;">Learning Labs</strong>
+                   </td>
+                   <td style="padding-left: 14px;">
+                       <span style="color: #475569; font-size: 13px; font-weight: 500; letter-spacing: 0.2px;">LMS avanzado + IA + Simuladores Académicos</span>
+                   </td>
+               </tr>
+           </table>
+
         ENTREGABLE:
-        Solo devuelve el texto plano del cuerpo del correo. Nada de introducciones tuyas. Empieza directamente con el saludo.
+        Devuelve ÚNICAMENTE el código HTML puro. SIN bloques de markdown (no uses ```html). No uses las etiquetas <html> ni <body>. Inicia directamente con el primer <p> del saludo.
         """
 
-        # FASE 3: SÍNTESIS CUÁNTICA (OpenAI / DeepSeek Sync Call)
+        # ----------------------------------------------------------------------
+        # FASE 4: SÍNTESIS CUÁNTICA (DEEPSEEK API CALL)
+        # ----------------------------------------------------------------------
         api_key = os.environ.get("DEEPSEEK_API_KEY") or getattr(settings, 'DEEPSEEK_API_KEY', None)
         if not api_key:
-            raise ValueError("Falta DEEPSEEK_API_KEY en variables de entorno.")
+            raise ValueError("Configuración Crítica: Falta DEEPSEEK_API_KEY en el entorno.")
 
-        sync_client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-        
+        #sync_client = OpenAI(api_key=api_key, base_url="[https://api.deepseek.com](https://api.deepseek.com)")
+        sync_client = OpenAI(
+            api_key=api_key, 
+            base_url="https://api.deepseek.com/v1"
+        )
+        llm_start_time = time.perf_counter()
         response = sync_client.chat.completions.create(
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": "Genera el correo táctico B2B exacto que debo enviar."}
+                {"role": "user", "content": "Genera el correo HTML táctico B2B exacto que debo enviar."}
             ],
-            temperature=0.6,
-            max_tokens=800
+            temperature=0.7, # Creatividad optimizada para persuasión
+            max_tokens=850,
+            presence_penalty=0.15,
+            frequency_penalty=0.2
         )
         
         cuerpo_generado = response.choices[0].message.content.strip()
-        logger.info(f"🚀 [APEX CLOSER] Lingüística sintetizada con éxito. Longitud: {len(cuerpo_generado)} bytes.")
+        
+        # Purga de alucinaciones Markdown (Sanitización HTML)
+        if cuerpo_generado.startswith("```html"):
+            cuerpo_generado = cuerpo_generado.replace("```html", "", 1)
+        if cuerpo_generado.endswith("```"):
+            cuerpo_generado = cuerpo_generado.rsplit("```", 1)[0]
+        cuerpo_generado = cuerpo_generado.strip()
+            
+        llm_latency = (time.perf_counter() - llm_start_time) * 1000
+        logger.info(f"🚀 [APEX SYNTHESIS] LLM completó el motor de persuasión en {llm_latency:.2f}ms. Payload: {len(cuerpo_generado)} bytes.")
 
-        # FASE 4: DESPLIEGUE DEL ARMAMENTO (SMTP)
+        # ----------------------------------------------------------------------
+        # FASE 5: DESPLIEGUE DEL ARMAMENTO (SMTP RELAY - HTML ENABLED)
+        # ----------------------------------------------------------------------
+        remitente = getattr(settings, 'EMAIL_HOST_USER', 'omni-hydra@localhost')
+        # Remitente enmascarado con alta autoridad
+        from_header = f"Learning Labs | Expansión <{remitente}>"
+
+        thread_id = getattr(inbound, 'thread_id', None) or getattr(inbound, 'message_id', '')
+        
+        headers = {}
+        if thread_id:
+            headers['In-Reply-To'] = thread_id
+            headers['References'] = thread_id
+
         email_msg = EmailMessage(
             subject=asunto_respuesta,
             body=cuerpo_generado,
-            from_email=f"Miller Ospina | Learning Labs <{settings.EMAIL_HOST_USER}>",
+            from_email=from_header,
             to=[correo_destino],
-            headers={
-                'In-Reply-To': inbound.thread_id or '',
-                'References': inbound.thread_id or ''
-            }
+            headers=headers
         )
-        email_msg.send(fail_silently=False)
+        
+        # [THE MAGIC WAND]: Le indicamos al cliente (Gmail/Outlook) que renderice la belleza del HTML
+        email_msg.content_subtype = "html"
+        
+        smtp_start_time = time.perf_counter()
+        email_msg.send(fail_silently=False) 
+        smtp_latency = (time.perf_counter() - smtp_start_time) * 1000
+        logger.info(f"📨 [SMTP RELAY] Misil HTML despachado al servidor de correo en {smtp_latency:.2f}ms.")
 
-        # FASE 5: INMUTABILIDAD EN LA MATRIX (Registro en Omni-Timeline)
+        # ----------------------------------------------------------------------
+        # FASE 6: INMUTABILIDAD EN LA MATRIX (Database Commit Bulletproof)
+        # ----------------------------------------------------------------------
         with transaction.atomic():
-            Interaction.objects.create(
-                institution=colegio,
-                contact=contacto_target,
-                direction='OUT',
-                channel='EMAIL',
-                type='auto_reply_apex_closer',
-                subject=asunto_respuesta,
-                content=cuerpo_generado,
-                status='SENT',
-                is_ai_generated=True,
-                ai_sentiment='STRATEGIC_PUSH',
-                thread_id=inbound.thread_id
-            )
-            colegio.processing_status = 'NEGOTIATING'
-            colegio.save(update_fields=['processing_status'])
+            # Construcción dinámica para evitar el error "unexpected keyword argument"
+            interaction_kwargs = {
+                'institution': colegio,
+                'direction': 'OUT',
+                'channel': 'EMAIL',
+                'subject': asunto_respuesta,
+                'status': 'SENT',
+                'is_ai_generated': True,
+            }
+            
+            if contacto_target:
+                interaction_kwargs['contact'] = contacto_target
+                
+            from sales.models import Interaction
+            model_fields = [f.name for f in Interaction._meta.get_fields()]
+            
+            # Inyección inteligente del Payload
+            if 'content' in model_fields:
+                interaction_kwargs['content'] = cuerpo_generado
+            elif 'message_sent' in model_fields:
+                interaction_kwargs['message_sent'] = cuerpo_generado
+            
+            # Metadata Opcional (Si tu DB lo soporta)
+            if 'ai_sentiment' in model_fields:
+                interaction_kwargs['ai_sentiment'] = 'STRATEGIC_PUSH'
+            if 'thread_id' in model_fields and thread_id:
+                interaction_kwargs['thread_id'] = thread_id
+            if 'interaction_type' in model_fields:
+                interaction_kwargs['interaction_type'] = 'auto_reply_apex_closer'
 
-        latency = (time.perf_counter() - t_start) * 1000
-        logger.info(f"✅ [IMPACTO ABSOLUTO] APEX Closer envió munición B2B a {correo_destino}. Latencia: {latency:.2f}ms")
-        return f"Apex Closer Impact -> {correo_destino}"
+            # 💥 IMPACTO A BASE DE DATOS
+            Interaction.objects.create(**interaction_kwargs)
+            
+            # Transición del estado del Lead a Negociación
+            if hasattr(colegio, 'processing_status'):
+                colegio.processing_status = 'NEGOTIATING'
+                colegio.save(update_fields=['processing_status'])
+            elif hasattr(colegio, 'status'):
+                colegio.status = 'NEGOTIATING'
+                colegio.save(update_fields=['status'])
+
+        total_latency = (time.perf_counter() - t_start) * 1000
+        logger.info(f"✅ [IMPACTO CONFIRMADO] Secuencia APEX finalizada. Objetivo: {correo_destino}. Latencia Total: {total_latency:.2f}ms")
+        
+        return f"Apex Closer Impact Confirmed -> {correo_destino} (TTL: {total_latency:.0f}ms)"
 
     except Exception as e:
-        logger.critical(f"💀 [FATAL ERROR] Fallo catastrófico en Apex Closer Engine: {e}", exc_info=True)
-        raise self.retry(exc=e, countdown=45)
+        logger.critical(f"💀 [FATAL ERROR] Falla estructural en APEX Closer Engine: {str(e)}", exc_info=True)
+        raise self.retry(exc=e)

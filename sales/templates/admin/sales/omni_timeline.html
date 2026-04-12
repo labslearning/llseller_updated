@@ -245,7 +245,26 @@
                 <span class="drop-shadow-md relative z-10" x-text="isRadarScanning ? 'ESCANENANDO...' : 'SYNC RADAR'"></span>
             </button>
 
-            <div class="w-[1px] h-8 bg-white/10 mx-1 self-center"></div> <button 
+            <button 
+                @click="fireApexCloser('{{ institution.id }}')"
+                :disabled="isApexFiring"
+                class="group relative bg-[#2a1300] hover:bg-orange-900/40 text-orange-50 px-5 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border border-orange-500/50 flex items-center gap-3 shadow-[0_0_20px_rgba(249,115,22,0.2)] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed overflow-hidden ml-1"
+                :class="{'!bg-gradient-to-br from-green-900 to-green-700 !border-green-500': apexImpactConfirmed}">
+                <div class="absolute inset-0 bg-gradient-to-r from-orange-500/0 via-orange-500/20 to-orange-500/0 translate-x-[-100%] group-hover:animate-shimmer pointer-events-none"></div>
+                <span class="material-symbols-outlined text-[18px] transition-transform"
+                      :class="{
+                        'animate-spin text-orange-300': isApexFiring && !apexImpactConfirmed, 
+                        'group-hover:scale-110 text-neon-orange': !isApexFiring && !apexImpactConfirmed,
+                        'text-white': apexImpactConfirmed
+                      }">
+                    smart_toy
+                </span>
+                <span class="drop-shadow-md relative z-10" x-text="apexButtonText"></span>
+            </button>
+
+            <div class="w-[1px] h-8 bg-white/10 mx-1 self-center"></div> 
+            
+            <button 
                 hx-post="/admin/sales/globalpipeline/omni-radar/ai-compose/{{ institution.id }}/?channel=EMAIL" 
                 hx-target="#ai-trap" 
                 hx-swap="innerHTML"
@@ -598,6 +617,9 @@
             
             // [GOD TIER INJECTION] System Override State
             isRadarScanning: false,
+            isApexFiring: false,
+            apexButtonText: 'RESPONDER CON IA (APEX)',
+            apexImpactConfirmed: false,
 
             init() {
                 console.log("%c[APEX LEVIATHAN v4.0] Kernel Booting...", "color: #10b981; font-weight: 900; font-size: 16px; background: #000; padding: 4px; border-radius: 4px;");
@@ -649,6 +671,55 @@
                     this.notify('error', `[ANOMALÍA EN RADAR]: Módulo fuera de alcance.`, 'warning');
                     this.playTacticalSound('error');
                     this.isRadarScanning = false;
+                }
+            },
+
+            // --- [GOD TIER INJECTION: MANUAL APEX CLOSER (HITL)] --- //
+            async fireApexCloser(instId) {
+                if (this.isApexFiring) return;
+
+                this.playTacticalSound('blip');
+                this.isApexFiring = true;
+                this.apexButtonText = 'SINTETIZANDO CIERRE...';
+                this.notify('warning', '[APEX SYSTEM]: Evaluando historial y redactando respuesta táctica B2B...', 'psychology');
+
+                try {
+                    // Extract CSRF Token natively with Fallback to Cookie Regex
+                    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                                      document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+                    const response = await fetch(`/sales/api/v1/override/fire-apex/${instId}/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrfToken,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok && data.status === 'success') {
+                        this.notify('success', `[DEAL CERRADO]: Correo corporativo enviado en ${data.telemetry?.execution_time_ms || 0}ms.`, 'verified');
+                        this.playTacticalSound('fire');
+                        
+                        // Mutación reactiva al éxito (Botón Verde)
+                        this.apexButtonText = '¡IMPACTO CONFIRMADO!';
+                        this.apexImpactConfirmed = true; 
+                        
+                        setTimeout(() => { window.location.reload(); }, 2000);
+                    } else {
+                        throw new Error(data.error_details || data.message || 'Falla en el motor DeepSeek/SMTP.');
+                    }
+                } catch (error) {
+                    console.error('[APEX CLOSER ERROR]:', error);
+                    this.notify('error', `[ANOMALÍA EN IA]: ${error.message}`, 'error');
+                    this.playTacticalSound('error');
+                    
+                    // Restauración reactiva post-falla
+                    setTimeout(() => {
+                        this.isApexFiring = false;
+                        this.apexButtonText = 'RESPONDER CON IA (APEX)';
+                    }, 3000);
                 }
             },
 
